@@ -1,5 +1,15 @@
 package http
 
+import (
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"time"
+)
+
 type key int
 
 const (
@@ -69,9 +79,9 @@ func RunHTTPServer(addr string, router *http.ServeMux) {
 		close(done)
 	}()
 
-	logger.Println("Server is ready to handle requests at", listenAddr)
+	logger.Println("Server is ready to handle requests at", addr)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		logger.Fatalf("Could not listen on %s: %v\n", listenAddr, err)
+		logger.Fatalf("Could not listen on %s: %v\n", addr, err)
 	}
 
 	<-done
