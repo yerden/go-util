@@ -81,11 +81,7 @@ func (lb *LoadBalancer) Stop() {
 
 // Perform a job on specified `Item`.
 func (lb *LoadBalancer) Do(f func()) {
-	if N := len(lb.farm); N > 0 {
-		if i := lb.choose(); i >= 0 && i < N {
-			lb.farm[i] <- f
-		}
-	}
+	lb.DoWith(lb.choose(), f)
 }
 
 // Perform a job on specified `Item` with specific goroutine.
@@ -93,6 +89,20 @@ func (lb *LoadBalancer) DoWith(i int, f func()) {
 	if N := len(lb.farm); N > 0 {
 		lb.farm[i%N] <- f
 	}
+}
+
+// Perform a bunch of jobs.
+func (lb *LoadBalancer) DoBulk(ff []func()) {
+	lb.DoBulkWith(lb.choose(), ff)
+}
+
+// Perform a bunch of jobs with specific goroutine.
+func (lb *LoadBalancer) DoBulkWith(i int, ff []func()) {
+	lb.DoWith(i, func() {
+		for _, x := range ff {
+			x()
+		}
+	})
 }
 
 func (lb *LoadBalancer) Workers() int {
