@@ -7,12 +7,37 @@ import (
 	"time"
 )
 
-type Selector int
+// select index out of range [0...max)
+type Selector interface {
+	Select(int) int
+}
 
-const (
-	RoundRobin Selector = iota
-	Random
-	TimeUnixNano
+// round robin selector
+type rr struct {
+	cnt *uint64
+}
+
+func (s rr) Select(max int) int {
+	u := atomic.AddUint64(s.cnt, 1)
+	return int(u % uint64(max))
+}
+
+type random struct{}
+
+func (s random) Select(max int) int {
+	return rand.Int() % max
+}
+
+type timesel struct{}
+
+func (s timesel) Select(max int) int {
+	return int(time.Now().UnixNano() % int64(max))
+}
+
+var (
+	RoundRobin   = Selector(rr{new(uint64)})
+	Random       = Selector(random{})
+	TimeUnixNano = Selector(timesel{})
 )
 
 type Config struct {
@@ -27,14 +52,13 @@ type Config struct {
 type LoadBalancer struct {
 	farm []chan func()
 	stop chan bool
-	// for round-robin selector
-	counter uint64
-	choose  func() int
+	mode Selector
 }
 
 func New(config Config) *LoadBalancer {
 	lb := &LoadBalancer{
 		stop: make(chan bool, config.Workers),
+		mode: config.Mode,
 		farm: make([]chan func(), config.Workers)}
 
 	for i, _ := range lb.farm {
@@ -48,23 +72,6 @@ func New(config Config) *LoadBalancer {
 		}(ch)
 	}
 
-	switch config.Mode {
-	default:
-		fallthrough
-	case RoundRobin:
-		lb.choose = func() int {
-			u := atomic.AddUint64(&lb.counter, 1)
-			return int(u % uint64(len(lb.farm)))
-		}
-	case Random:
-		lb.choose = func() int {
-			return rand.Int() % len(lb.farm)
-		}
-	case TimeUnixNano:
-		lb.choose = func() int {
-			return int(time.Now().UnixNano() % int64(len(lb.farm)))
-		}
-	}
 	return lb
 }
 
@@ -81,7 +88,7 @@ func (lb *LoadBalancer) Stop() {
 
 // Perform a job on specified `Item`.
 func (lb *LoadBalancer) Do(f func()) {
-	lb.DoWith(lb.choose(), f)
+	lb.DoWith(lb.mode.Select(len(lb.farm)), f)
 }
 
 // Perform a job on specified `Item` with specific goroutine.
@@ -93,7 +100,7 @@ func (lb *LoadBalancer) DoWith(i int, f func()) {
 
 // Perform a bunch of jobs.
 func (lb *LoadBalancer) DoBulk(ff []func()) {
-	lb.DoBulkWith(lb.choose(), ff)
+	lb.DoBulkWith(lb.mode.Select(len(lb.farm)), ff)
 }
 
 // Perform a bunch of jobs with specific goroutine.
