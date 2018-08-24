@@ -1,6 +1,8 @@
 package lb
 
 import (
+	"fmt"
+	"github.com/yerden/go-util/assert"
 	"math/rand"
 	"testing"
 )
@@ -74,5 +76,30 @@ func TestLB2(t *testing.T) {
 
 	if sum != sum1 {
 		t.FailNow()
+	}
+}
+
+type myint int
+
+func (x *myint) Do() {
+	*x = *x + 1
+}
+
+func TestWorker(t *testing.T) {
+	a := assert.New(t)
+
+	w := NewWorker(WorkerConfig{BacklogSize: 14, ChannelBuffer: 2})
+	a.NotNil(w)
+
+	d := make([]myint, 20)
+
+	for i, _ := range d {
+		d[i] = myint(i)
+		w.Push(&d[i])
+	}
+	w.Close()
+	for i, _ := range d {
+		fmt.Println(d[i])
+		a.Equal(i+1, int(d[i]))
 	}
 }
