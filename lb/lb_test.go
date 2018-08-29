@@ -1,7 +1,6 @@
 package lb
 
 import (
-	"fmt"
 	"github.com/yerden/go-util/assert"
 	"math/rand"
 	"testing"
@@ -10,13 +9,13 @@ import (
 func TestLB1(t *testing.T) {
 	lb := New(Config{
 		Workers:    5,
-		Mode:       RoundRobin,
+		Selector:   NewSelector(RoundRobin),
 		BufferSize: 32})
 	defer lb.Stop()
+	a := assert.New(t)
+	a.NotNil(lb)
 
-	if lb.Workers() != 5 {
-		t.FailNow()
-	}
+	a.Equal(lb.Workers(), 5)
 
 	ch := make(chan int)
 
@@ -24,20 +23,16 @@ func TestLB1(t *testing.T) {
 		ch <- 1
 	})
 
-	if <-ch != 1 {
-		t.FailNow()
-	}
-
+	a.Equal(<-ch, 1)
 	lb.DoWith(2, func() {
 		ch <- 2
 	})
 
-	if <-ch != 2 {
-		t.FailNow()
-	}
+	a.Equal(<-ch, 2)
 }
 
 func TestLB2(t *testing.T) {
+	a := assert.New(t)
 	var sum, sum1 int
 	workers := 5
 	ch := make(chan int, workers)
@@ -65,7 +60,7 @@ func TestLB2(t *testing.T) {
 
 	lb := New(Config{
 		Workers:    workers,
-		Mode:       RoundRobin,
+		Selector:   NewSelector(RoundRobin),
 		BufferSize: 32})
 	for i := 0; i < workers; i++ {
 		lb.Do(getF(20*i, 20))
@@ -74,9 +69,7 @@ func TestLB2(t *testing.T) {
 		sum1 += <-ch
 	}
 
-	if sum != sum1 {
-		t.FailNow()
-	}
+	a.Equal(sum, sum1)
 }
 
 type myint int
@@ -99,7 +92,6 @@ func TestWorker(t *testing.T) {
 	}
 	w.Close()
 	for i, _ := range d {
-		fmt.Println(d[i])
 		a.Equal(i+1, int(d[i]))
 	}
 }

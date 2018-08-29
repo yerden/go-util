@@ -31,8 +31,12 @@ type WorkerConfig struct {
 }
 
 func NewWorker(c WorkerConfig) *worker {
+	prealloc := c.BacklogSize
+	if prealloc <= 0 {
+		prealloc = 1
+	}
 	pool := &sync.Pool{New: func() interface{} {
-		return make([]Job, 0, c.BacklogSize)
+		return make([]Job, 0, prealloc)
 	}}
 	w := &worker{
 		size:    c.BacklogSize,
@@ -47,12 +51,12 @@ func NewWorker(c WorkerConfig) *worker {
 
 func (w *worker) execute() {
 	w.jobsCh <- w.buffer
-	w.buffer = w.pool.Get().([]Job)
 }
 
 func (w *worker) Push(j Job) {
 	if w.buffer = append(w.buffer, j); len(w.buffer) >= w.size {
 		w.execute()
+		w.buffer = w.pool.Get().([]Job)
 	}
 }
 
