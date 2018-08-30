@@ -14,6 +14,20 @@ type Worker interface {
 	Close()
 }
 
+// Configuration of a worker
+type WorkerConfig struct {
+	// size of backlog for incoming jobs
+	BacklogSize int
+	// buffer of channel to hold backlog
+	ChannelBuffer int
+}
+
+type TeamConfig struct {
+	Selector
+	WorkerConfig
+	Number int
+}
+
 type worker struct {
 	pool    *sync.Pool
 	buffer  []Job
@@ -22,12 +36,9 @@ type worker struct {
 	size    int
 }
 
-// Configuration of a worker
-type WorkerConfig struct {
-	// size of backlog for incoming jobs
-	BacklogSize int
-	// buffer of channel to hold backlog
-	ChannelBuffer int
+type team struct {
+	Selector
+	workers []Worker
 }
 
 func NewWorker(c WorkerConfig) *worker {
@@ -76,4 +87,23 @@ func (w *worker) Close() {
 	w.execute()
 	close(w.jobsCh)
 	<-w.closeCh
+}
+
+func NewTeam(c TeamConfig) *team {
+	workers := make([]Worker, c.Number)
+	for i, _ := range workers {
+		workers[i] = NewWorker(c.WorkerConfig)
+	}
+	return &team{c.Selector, workers}
+}
+
+func (t *team) Push(j Job) {
+	id := t.Select(len(t.workers))
+	t.workers[id].Push(j)
+}
+
+func (t *team) Close() {
+	for i, _ := range t.workers {
+		t.workers[i].Close()
+	}
 }
