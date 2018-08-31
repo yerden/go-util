@@ -159,102 +159,78 @@ func (c *chunk) Do() {
 	c.output <- crc32.Update(0, c.table, c.data)
 }
 
-func prepareChunks(num, chunkSize int) ([]chunk, chan uint32) {
-	ch := make(chan uint32, num+10)
-	data := make([]byte, num*chunkSize)
-	chunks := make([]chunk, num)
+func BenchmarkSerial(b *testing.B) {
 	rand.Seed(time.Now().Unix())
-	rand.Read(data)
+	table := crc32.MakeTable(crc32.IEEE)
+	ch := make(chan uint32, 256)
 
-	for i, _ := range chunks {
-		chunks[i].data = data[i*chunkSize : (i+1)*chunkSize]
-		chunks[i].table = crc32.MakeTable(crc32.IEEE)
-		chunks[i].output = ch
-	}
-	return chunks, ch
-}
-
-func computeSerial(num, chunkSize int) func() {
-	chunks, ch := prepareChunks(num, chunkSize)
-
-	return func() {
-		res := make([]uint32, num)
-		for i, _ := range chunks {
-			c := &chunks[i]
-			c.Do()
+	// result consumer
+	go func() {
+		for i := 0; i < b.N; i++ {
+			_ = <-ch
 		}
-		for i, _ := range chunks {
-			res[i] = <-ch
-		}
-	}
-}
+	}()
 
-func computeWithLB(num, chunkSize, workers, buffer int) func() {
-	chunks, ch := prepareChunks(num, chunkSize)
-	getF := func(c *chunk) func() {
-		return c.Do
-	}
-
-	return func() {
-		lb := New(Config{
-			Workers:    workers,
-			Selector:   NewSelector(RoundRobin),
-			BufferSize: buffer})
-		defer lb.Stop()
-
-		res := make([]uint32, num)
-		for i, _ := range chunks {
-			c := &chunks[i]
-			lb.Do(getF(c))
-		}
-		for i, _ := range chunks {
-			res[i] = <-ch
-		}
-	}
-}
-
-func computeWithTeam(num, chunkSize, workers, buffer int) func() {
-	chunks, ch := prepareChunks(num, chunkSize)
-
-	return func() {
-		team := NewTeam(TeamConfig{
-			Number:   workers,
-			Selector: NewSelector(RoundRobin),
-			WorkerConfig: WorkerConfig{
-				BacklogSize:   buffer,
-				ChannelBuffer: buffer}})
-		res := make([]uint32, num)
-		for i, _ := range chunks {
-			c := &chunks[i]
-			team.Push(c)
-		}
-		team.Close()
-		for i, _ := range chunks {
-			res[i] = <-ch
-		}
-	}
-}
-
-func BenchmarkWithTeam(b *testing.B) {
-	f := computeWithTeam(1000, 1000, 12, 1000)
-
+	// hot path
 	for i := 0; i < b.N; i++ {
-		f()
+		p := &chunk{make([]byte, 256), table, ch}
+		rand.Read(p.data)
+		p.Do()
 	}
 }
 
 func BenchmarkWithLB(b *testing.B) {
-	f := computeWithLB(1000, 1000, 12, 10)
+	rand.Seed(time.Now().Unix())
+	table := crc32.MakeTable(crc32.IEEE)
+	ch := make(chan uint32, 256)
 
+	// result consumer
+	go func() {
+		for i := 0; i < b.N; i++ {
+			_ = <-ch
+		}
+	}()
+
+	lb := New(Config{
+		Workers:    10,
+		Selector:   NewSelector(RoundRobin),
+		BufferSize: 100})
+	defer lb.Stop()
+
+	// hot path
 	for i := 0; i < b.N; i++ {
-		f()
+		p := &chunk{make([]byte, 256), table, ch}
+		rand.Read(p.data)
+		lb.Do(func(x *chunk) func() {
+			return x.Do
+		}(p))
 	}
 }
 
-func BenchmarkSerial(b *testing.B) {
-	f := computeSerial(1000, 1000)
+func BenchmarkWithTeam(b *testing.B) {
+	rand.Seed(time.Now().Unix())
+	table := crc32.MakeTable(crc32.IEEE)
+	ch := make(chan uint32, 256)
 
+	// result consumer
+	go func() {
+		for i := 0; i < b.N; i++ {
+			_ = <-ch
+		}
+	}()
+
+	team := NewTeam(TeamConfig{
+		Number:   10,
+		Selector: NewSelector(RoundRobin),
+		WorkerConfig: WorkerConfig{
+			BacklogSize:   100,
+			ChannelBuffer: 1000}})
+	defer team.Close()
+
+	// hot path
 	for i := 0; i < b.N; i++ {
-		f()
+		p := &chunk{make([]byte, 256), table, ch}
+		rand.Read(p.data)
+		team.Push(p)
 	}
 }
