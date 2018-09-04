@@ -14,7 +14,7 @@ func TestLB1(t *testing.T) {
 		Workers:    5,
 		Selector:   NewSelector(RoundRobin),
 		BufferSize: 32})
-	defer lb.Stop()
+	defer lb.Close()
 	a := assert.New(t)
 	a.NotNil(lb)
 
@@ -195,15 +195,13 @@ func BenchmarkWithLB(b *testing.B) {
 		Workers:    10,
 		Selector:   NewSelector(RoundRobin),
 		BufferSize: 100})
-	defer lb.Stop()
+	defer lb.Close()
 
 	// hot path
 	for i := 0; i < b.N; i++ {
 		p := &chunk{make([]byte, 256), table, ch}
 		rand.Read(p.data)
-		lb.Do(func(x *chunk) func() {
-			return x.Do
-		}(p))
+		lb.Push(p)
 	}
 }
 

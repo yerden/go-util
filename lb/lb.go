@@ -9,6 +9,8 @@ type Config struct {
 	BufferSize int
 }
 
+var _ Worker = (*LoadBalancer)(nil)
+
 type LoadBalancer struct {
 	Selector
 	farm []chan func()
@@ -36,7 +38,7 @@ func New(config Config) *LoadBalancer {
 }
 
 // Stop cluster's goroutines.
-func (lb *LoadBalancer) Stop() {
+func (lb *LoadBalancer) Close() {
 	for _, ch := range lb.farm {
 		close(ch)
 	}
@@ -49,6 +51,11 @@ func (lb *LoadBalancer) Stop() {
 // Perform a job on specified `Item`.
 func (lb *LoadBalancer) Do(f func()) {
 	lb.DoWith(lb.Select(len(lb.farm)), f)
+}
+
+// Perform a Job
+func (lb *LoadBalancer) Push(j Job) {
+	lb.Do(j.Do)
 }
 
 // Perform a job on specified `Item` with specific goroutine.
