@@ -157,8 +157,8 @@ func (m *Mirror) Mirror() error {
 	}
 
 	scanner := util.NewScanner(m.pool, util.ScanOpts{Command: "SCAN"})
-	for i := 0; scanner.HasNext(); i++ {
-		if buf[i] = scanner.Next(); i == cap(buf)-1 {
+	for scanner.HasNext() {
+		if buf = append(buf, scanner.Next()); len(buf) == cap(buf) {
 			if err := mGetAndSave(buf); err != nil {
 				return err
 			}
