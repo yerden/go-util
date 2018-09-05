@@ -44,6 +44,7 @@ type MirrorConfig struct {
 	Network, Addr string
 	Formatter     KVFormatter
 	DbIndex       int
+	ScanCount     int
 }
 
 type Mirror struct {
@@ -51,6 +52,8 @@ type Mirror struct {
 	store     *sync.Map
 	formatter KVFormatter
 	index     int
+
+	scanCnt int
 }
 
 func (m *Mirror) keyEvents(f string) string {
@@ -111,7 +114,12 @@ func NewMirror(c MirrorConfig) *Mirror {
 		fmt.Println("error initializing pool:", err.Error())
 	}
 	store := new(sync.Map)
-	return &Mirror{redisPool, store, c.Formatter, c.DbIndex}
+	return &Mirror{
+		pool:      redisPool,
+		store:     store,
+		formatter: c.Formatter,
+		index:     c.DbIndex,
+		scanCnt:   c.ScanCount}
 }
 
 func (m *Mirror) SyncMap() *sync.Map {
@@ -139,7 +147,7 @@ func isClosed(ctx context.Context) bool {
 }
 
 func (m *Mirror) Mirror() error {
-	buf := make([]string, 0, 100)
+	buf := make([]string, 0, m.scanCnt)
 
 	mGetAndSave := func(keys []string) error {
 		values, err := m.redisMget(keys...)
@@ -159,7 +167,7 @@ func (m *Mirror) Mirror() error {
 		return nil
 	}
 
-	scanner := util.NewScanner(m.pool, util.ScanOpts{Command: "SCAN"})
+	scanner := util.NewScanner(m.pool, util.ScanOpts{Command: "SCAN", Count: m.scanCnt})
 	for scanner.HasNext() {
 		if buf = append(buf, scanner.Next()); len(buf) == cap(buf) {
 			if err := mGetAndSave(buf); err != nil {
