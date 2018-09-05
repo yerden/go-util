@@ -64,14 +64,37 @@ func getEvent(channel string) string {
 
 func (m *Mirror) queryRedis(key interface{}) (interface{}, error) {
 	skey := m.formatter.FromKey(key)
-	sval, err := m.queryRedisFmt(skey)
+	sval, err := m.redisGet(skey)
 	if err != nil {
 		return nil, err
 	}
 	return m.formatter.ToValue(sval), nil
 }
 
-func (m *Mirror) queryRedisFmt(key string) (string, error) {
+func (m *Mirror) redisMget(keyStr ...string) ([]*string, error) {
+	if len(keyStr) == 0 {
+		return nil, nil
+	}
+	keys := make([]interface{}, len(keyStr))
+	out := make([]*string, 0, len(keyStr))
+	if resp := m.pool.Cmd("MGET", keys...); resp.Err != nil {
+		return nil, resp.Err
+	} else if array, err := resp.Array(); err != nil {
+		return nil, err
+	} else {
+		for _, resp := range array {
+			x := (*string)(nil)
+			if str, err := resp.Str(); err == nil {
+				x := new(string)
+				*x = str
+			}
+			out = append(out, x)
+		}
+		return out, nil
+	}
+}
+
+func (m *Mirror) redisGet(key string) (string, error) {
 	if resp := m.pool.Cmd("GET", key); resp.Err != nil {
 		return "", resp.Err
 	} else {
@@ -113,18 +136,39 @@ func isClosed(ctx context.Context) bool {
 }
 
 func (m *Mirror) Mirror() error {
-	scanner := util.NewScanner(m.pool, util.ScanOpts{Command: "SCAN"})
-	for scanner.HasNext() {
-		key := scanner.Next()
-		value, err := m.queryRedisFmt(key)
+	buf := make([]string, 0, 10)
+
+	mGetAndSave := func(keys []string) error {
+		values, err := m.redisMget(keys...)
 		if err != nil {
 			return err
 		}
-		m.store.Store(
-			m.formatter.ToKey(key),
-			m.formatter.ToValue(value))
+		if len(keys) != len(values) {
+			panic("MGET command failed")
+		}
+		for j, value := range values {
+			if value != nil {
+				m.store.Store(
+					m.formatter.ToKey(keys[j]),
+					m.formatter.ToValue(*value))
+			}
+		}
+		return nil
 	}
-	return scanner.Err()
+
+	scanner := util.NewScanner(m.pool, util.ScanOpts{Command: "SCAN"})
+	for i := 0; scanner.HasNext(); i++ {
+		if buf[i] = scanner.Next(); i == cap(buf)-1 {
+			if err := mGetAndSave(buf); err != nil {
+				return err
+			}
+			buf = buf[:0]
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	return mGetAndSave(buf)
 }
 
 func (m *Mirror) ProcessEvents(ctx context.Context) {
@@ -165,7 +209,7 @@ MAIN_LOOP:
 			key := resp.Message
 			switch event := getEvent(resp.Channel); event {
 			case "expire":
-				if value, err := m.queryRedisFmt(key); err == nil {
+				if value, err := m.redisGet(key); err == nil {
 					m.store.Store(
 						m.formatter.ToKey(key),
 						m.formatter.ToValue(value))
