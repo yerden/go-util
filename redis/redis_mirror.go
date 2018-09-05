@@ -7,7 +7,6 @@ import (
 	"github.com/mediocregopher/radix.v2/pool"
 	"github.com/mediocregopher/radix.v2/pubsub"
 	"github.com/mediocregopher/radix.v2/util"
-	//"github.com/mediocregopher/radix.v2/redis"
 	"strings"
 	"sync"
 )
@@ -76,6 +75,10 @@ func (m *Mirror) redisMget(keyStr ...string) ([]*string, error) {
 		return nil, nil
 	}
 	keys := make([]interface{}, len(keyStr))
+	for i, _ := range keys {
+		keys[i] = keyStr[i]
+	}
+
 	out := make([]*string, 0, len(keyStr))
 	if resp := m.pool.Cmd("MGET", keys...); resp.Err != nil {
 		return nil, resp.Err
@@ -85,7 +88,7 @@ func (m *Mirror) redisMget(keyStr ...string) ([]*string, error) {
 		for _, resp := range array {
 			x := (*string)(nil)
 			if str, err := resp.Str(); err == nil {
-				x := new(string)
+				x = new(string)
 				*x = str
 			}
 			out = append(out, x)
@@ -136,7 +139,7 @@ func isClosed(ctx context.Context) bool {
 }
 
 func (m *Mirror) Mirror() error {
-	buf := make([]string, 0, 10)
+	buf := make([]string, 0, 100)
 
 	mGetAndSave := func(keys []string) error {
 		values, err := m.redisMget(keys...)
