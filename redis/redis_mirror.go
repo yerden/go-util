@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/mediocregopher/radix.v2/pool"
 	"github.com/mediocregopher/radix.v2/pubsub"
+	"github.com/mediocregopher/radix.v2/util"
 	//"github.com/mediocregopher/radix.v2/redis"
 	"strings"
 	"sync"
@@ -111,6 +112,21 @@ func isClosed(ctx context.Context) bool {
 	}
 }
 
+func (m *Mirror) Mirror() error {
+	scanner := util.NewScanner(m.pool, util.ScanOpts{Command: "SCAN"})
+	for scanner.HasNext() {
+		key := scanner.Next()
+		value, err := m.queryRedisFmt(key)
+		if err != nil {
+			return err
+		}
+		m.store.Store(
+			m.formatter.ToKey(key),
+			m.formatter.ToValue(value))
+	}
+	return scanner.Err()
+}
+
 func (m *Mirror) ProcessEvents(ctx context.Context) {
 MAIN_LOOP:
 	for {
@@ -119,11 +135,13 @@ MAIN_LOOP:
 		}
 		cl, err := m.pool.Get()
 		if err != nil {
+			fmt.Println("error getting connection:", err.Error())
 			continue
 		}
 
 		subcl := pubsub.NewSubClient(cl)
 		if resp := subcl.PSubscribe(m.keyEvents("*")); resp.Err != nil {
+			fmt.Println("error subscribing to events:", err.Error())
 			cl.Close()
 			continue
 		}
@@ -137,6 +155,7 @@ MAIN_LOOP:
 			if resp.Timeout() {
 				continue
 			} else if resp.Err != nil {
+				fmt.Println("error receiving event:", err.Error())
 				cl.Close()
 				goto MAIN_LOOP
 			} else if resp.Type != pubsub.Message {
