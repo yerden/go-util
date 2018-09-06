@@ -6,9 +6,16 @@ import (
 	"fmt"
 	"github.com/mediocregopher/radix.v2/pool"
 	"github.com/mediocregopher/radix.v2/pubsub"
+	"github.com/mediocregopher/radix.v2/redis"
 	"github.com/mediocregopher/radix.v2/util"
 	"strings"
 	"sync"
+	"time"
+)
+
+const (
+	queryChannelBuf    = 128
+	queryDrainInterval = 100 * time.Millisecond
 )
 
 var (
@@ -52,12 +59,7 @@ type Mirror struct {
 	store     *sync.Map
 	formatter KVFormatter
 	index     int
-
-	scanCnt int
-}
-
-func (m *Mirror) keyEvents(f string) string {
-	return fmt.Sprintf("__keyevent@%d__:%s", m.index, f)
+	scanCnt   int
 }
 
 func getEvent(channel string) string {
@@ -66,45 +68,13 @@ func getEvent(channel string) string {
 
 func (m *Mirror) queryRedis(key interface{}) (interface{}, error) {
 	skey := m.formatter.FromKey(key)
-	sval, err := m.redisGet(skey)
-	if err != nil {
-		return nil, err
-	}
-	return m.formatter.ToValue(sval), nil
-}
 
-func (m *Mirror) redisMget(keyStr ...string) ([]*string, error) {
-	if len(keyStr) == 0 {
-		return nil, nil
-	}
-	keys := make([]interface{}, len(keyStr))
-	for i, _ := range keys {
-		keys[i] = keyStr[i]
-	}
-
-	out := make([]*string, 0, len(keyStr))
-	if resp := m.pool.Cmd("MGET", keys...); resp.Err != nil {
+	if resp := m.pool.Cmd("GET", skey); resp.Err != nil {
 		return nil, resp.Err
-	} else if array, err := resp.Array(); err != nil {
+	} else if sval, err := resp.Str(); err != nil {
 		return nil, err
 	} else {
-		for _, resp := range array {
-			x := (*string)(nil)
-			if str, err := resp.Str(); err == nil {
-				x = new(string)
-				*x = str
-			}
-			out = append(out, x)
-		}
-		return out, nil
-	}
-}
-
-func (m *Mirror) redisGet(key string) (string, error) {
-	if resp := m.pool.Cmd("GET", key); resp.Err != nil {
-		return "", resp.Err
-	} else {
-		return resp.Str()
+		return m.formatter.ToValue(sval), nil
 	}
 }
 
@@ -120,6 +90,49 @@ func NewMirror(c MirrorConfig) *Mirror {
 		formatter: c.Formatter,
 		index:     c.DbIndex,
 		scanCnt:   c.ScanCount}
+}
+
+func (m *Mirror) processQueries(ch <-chan string, ctx context.Context) {
+	buf := make([]interface{}, 0, queryChannelBuf)
+	ticker := time.NewTicker(queryDrainInterval)
+	defer ticker.Stop()
+
+	getSet := func(keys []interface{}) {
+		if len(keys) == 0 {
+			return
+		} else if resp := m.pool.Cmd("MGET", keys...); resp.Err != nil {
+			return
+		} else if array, err := resp.Array(); err != nil || len(array) != len(keys) {
+			return
+		} else {
+			for i, r := range array {
+				if value, err := r.Str(); err == nil {
+					m.store.Store(
+						m.formatter.ToKey(keys[i].(string)),
+						m.formatter.ToValue(value))
+				} else if r.IsType(redis.Nil) {
+					m.store.Delete(
+						m.formatter.ToKey(keys[i].(string)))
+				}
+			}
+		}
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case key := <-ch:
+			if buf = append(buf, key); len(buf) < cap(buf) {
+				break
+			}
+			getSet(buf)
+			buf = buf[:0]
+		case <-ticker.C:
+			getSet(buf)
+			buf = buf[:0]
+		}
+	}
 }
 
 func (m *Mirror) SyncMap() *sync.Map {
@@ -146,43 +159,21 @@ func isClosed(ctx context.Context) bool {
 	}
 }
 
-func (m *Mirror) Mirror() error {
-	buf := make([]string, 0, m.scanCnt)
+func (m *Mirror) Mirror(ctx context.Context) {
+	ch := make(chan string, m.scanCnt)
 
-	mGetAndSave := func(keys []string) error {
-		values, err := m.redisMget(keys...)
-		if err != nil {
-			return err
-		}
-		if len(keys) != len(values) {
-			panic("MGET command failed")
-		}
-		for j, value := range values {
-			if value != nil {
-				m.store.Store(
-					m.formatter.ToKey(keys[j]),
-					m.formatter.ToValue(*value))
-			}
-		}
-		return nil
-	}
+	newctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go m.processQueries(ch, newctx)
 
-	scanner := util.NewScanner(m.pool, util.ScanOpts{Command: "SCAN", Count: m.scanCnt})
-	for scanner.HasNext() {
-		if buf = append(buf, scanner.Next()); len(buf) == cap(buf) {
-			if err := mGetAndSave(buf); err != nil {
-				return err
-			}
-			buf = buf[:0]
+	// bootstrap scan
+	go func() {
+		scanner := util.NewScanner(m.pool,
+			util.ScanOpts{Command: "SCAN", Count: m.scanCnt})
+		for scanner.HasNext() {
+			ch <- scanner.Next()
 		}
-	}
-	if err := scanner.Err(); err != nil {
-		return err
-	}
-	return mGetAndSave(buf)
-}
-
-func (m *Mirror) ProcessEvents(ctx context.Context) {
+	}()
 MAIN_LOOP:
 	for {
 		if isClosed(ctx) {
@@ -194,8 +185,9 @@ MAIN_LOOP:
 			continue
 		}
 
+		eventFilter := fmt.Sprintf("__keyevent@%d__:*", m.index)
 		subcl := pubsub.NewSubClient(cl)
-		if resp := subcl.PSubscribe(m.keyEvents("*")); resp.Err != nil {
+		if resp := subcl.PSubscribe(eventFilter); resp.Err != nil {
 			fmt.Println("error subscribing to events:", err.Error())
 			cl.Close()
 			continue
@@ -217,14 +209,10 @@ MAIN_LOOP:
 				continue
 			}
 
-			key := resp.Message
-			switch event := getEvent(resp.Channel); event {
+			key, event := resp.Message, getEvent(resp.Channel)
+			switch event {
 			case "expire":
-				if value, err := m.redisGet(key); err == nil {
-					m.store.Store(
-						m.formatter.ToKey(key),
-						m.formatter.ToValue(value))
-				}
+				ch <- key
 			case "expired":
 				fallthrough
 			case "del":
