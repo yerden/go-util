@@ -22,44 +22,21 @@ var (
 	ErrNotFound = errors.New("Key not found")
 )
 
-type KVFormatter interface {
-	ToKey(string) interface{}
-	ToValue(string) interface{}
-	FromKey(interface{}) string
-	FromValue(interface{}) string
-}
-
-type DefaultKVFormatter struct{}
-
-func (x DefaultKVFormatter) ToKey(in string) interface{} {
-	return in
-}
-
-func (x DefaultKVFormatter) ToValue(in string) interface{} {
-	return in
-}
-
-func (x DefaultKVFormatter) FromKey(in interface{}) string {
-	return in.(string)
-}
-
-func (x DefaultKVFormatter) FromValue(in interface{}) string {
-	return in.(string)
-}
-
 type MirrorConfig struct {
 	Network, Addr string
-	Formatter     KVFormatter
+	FormatKey     Unmarshaller
+	FormatValue   Unmarshaller
 	DbIndex       int
 	ScanCount     int
 }
 
 type Mirror struct {
-	pool      *pool.Pool
-	store     *sync.Map
-	formatter KVFormatter
-	index     int
-	scanCnt   int
+	pool     *pool.Pool
+	store    *sync.Map
+	fmtKey   Unmarshaller
+	fmtValue Unmarshaller
+	index    int
+	scanCnt  int
 }
 
 func getEvent(channel string) string {
@@ -67,14 +44,14 @@ func getEvent(channel string) string {
 }
 
 func (m *Mirror) queryRedis(key interface{}) (interface{}, error) {
-	skey := m.formatter.FromKey(key)
+	skey := key.(fmt.Stringer).String()
 
 	if resp := m.pool.Cmd("GET", skey); resp.Err != nil {
 		return nil, resp.Err
 	} else if sval, err := resp.Str(); err != nil {
 		return nil, err
 	} else {
-		return m.formatter.ToValue(sval), nil
+		return m.fmtValue.Unmarshal(sval), nil
 	}
 }
 
@@ -85,11 +62,12 @@ func NewMirror(c MirrorConfig) *Mirror {
 	}
 	store := new(sync.Map)
 	return &Mirror{
-		pool:      redisPool,
-		store:     store,
-		formatter: c.Formatter,
-		index:     c.DbIndex,
-		scanCnt:   c.ScanCount}
+		pool:     redisPool,
+		store:    store,
+		fmtKey:   c.FormatKey,
+		fmtValue: c.FormatValue,
+		index:    c.DbIndex,
+		scanCnt:  c.ScanCount}
 }
 
 func (m *Mirror) processQueries(ch <-chan string, ctx context.Context) {
@@ -108,11 +86,11 @@ func (m *Mirror) processQueries(ch <-chan string, ctx context.Context) {
 			for i, r := range array {
 				if value, err := r.Str(); err == nil {
 					m.store.Store(
-						m.formatter.ToKey(keys[i].(string)),
-						m.formatter.ToValue(value))
+						m.fmtKey.Unmarshal(keys[i].(string)),
+						m.fmtValue.Unmarshal(value))
 				} else if r.IsType(redis.Nil) {
 					m.store.Delete(
-						m.formatter.ToKey(keys[i].(string)))
+						m.fmtKey.Unmarshal(keys[i].(string)))
 				}
 			}
 		}
@@ -216,7 +194,7 @@ MAIN_LOOP:
 			case "expired":
 				fallthrough
 			case "del":
-				m.store.Delete(m.formatter.ToKey(key))
+				m.store.Delete(m.fmtKey.Unmarshal(key))
 			}
 		}
 	}
