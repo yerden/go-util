@@ -28,7 +28,10 @@ func New(c DeduperConfig) *Deduper {
 		deathrow:   list.New()}
 }
 
-func (d *Deduper) Consume(input Keyer) Keyer {
+// Consume input and return:
+//         true if input is brand new,
+//         false if it's already in cache
+func (d *Deduper) Consume(input Keyer) bool {
 	l := d.deathrow
 	key := input.Key()
 	if e, ok := d.lookup[key]; ok {
@@ -37,7 +40,7 @@ func (d *Deduper) Consume(input Keyer) Keyer {
 		if prev := e.Prev(); prev != nil {
 			l.MoveBefore(e, prev)
 		}
-		return nil
+		return false
 	}
 
 	if l.Len() > d.maxEntries {
@@ -47,5 +50,5 @@ func (d *Deduper) Consume(input Keyer) Keyer {
 		delete(d.lookup, v.(Keyer).Key())
 	}
 	d.lookup[key] = l.PushFront(input)
-	return input
+	return true
 }
