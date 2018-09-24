@@ -2,6 +2,7 @@ package deduper
 
 import (
 	"container/list"
+	"time"
 )
 
 type Keyer interface {
@@ -21,6 +22,15 @@ type Deduper struct {
 	deathrow *list.List
 }
 
+type item struct {
+	value Keyer
+	t     time.Time
+}
+
+func newItem(input Keyer) item {
+	return item{input, time.Now()}
+}
+
 func New(c DeduperConfig) *Deduper {
 	return &Deduper{
 		maxEntries: c.MaxEntries,
@@ -29,9 +39,10 @@ func New(c DeduperConfig) *Deduper {
 }
 
 // Consume input and return:
-//         true if input is brand new,
-//         false if it's already in cache
-func (d *Deduper) Consume(input Keyer) bool {
+//         original value in cache,
+//         time of original value,
+//         true if input is brand new, or false if it's already in cache
+func (d *Deduper) Consume(input Keyer) (Keyer, time.Time, bool) {
 	l := d.deathrow
 	key := input.Key()
 	if e, ok := d.lookup[key]; ok {
@@ -40,15 +51,17 @@ func (d *Deduper) Consume(input Keyer) bool {
 		if prev := e.Prev(); prev != nil {
 			l.MoveBefore(e, prev)
 		}
-		return false
+		it := e.Value.(item)
+		return it.value, it.t, false
 	}
 
 	if l.Len() > d.maxEntries {
 		// cleanup
 		// remove back element as the rarest
-		v := l.Remove(l.Back())
-		delete(d.lookup, v.(Keyer).Key())
+		it := l.Remove(l.Back()).(item)
+		delete(d.lookup, it.value.Key())
 	}
-	d.lookup[key] = l.PushFront(input)
-	return true
+	it := newItem(input)
+	d.lookup[key] = l.PushFront(it)
+	return it.value, it.t, true
 }

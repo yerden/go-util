@@ -17,7 +17,7 @@ func TestDeduperUnique(t *testing.T) {
 	input := []myInt{0, 1, 2, 3, 4, 5}
 
 	for _, in := range input {
-		out := d.Consume(in)
+		_, _, out := d.Consume(in)
 		a.True(out)
 	}
 }
@@ -29,7 +29,7 @@ func TestDeduperRepeat1(t *testing.T) {
 
 	n := 0
 	for i := 0; i < 200; i++ {
-		if d.Consume(myInt(rand.Int() % 100)) {
+		if _, _, ok := d.Consume(myInt(rand.Int() % 100)); ok {
 			n++
 		}
 	}
@@ -44,7 +44,7 @@ func TestDeduperRepeat2(t *testing.T) {
 	output := []myInt{}
 
 	for _, in := range input {
-		if d.Consume(in) {
+		if _, _, ok := d.Consume(in); ok {
 			output = append(output, in)
 		}
 	}
