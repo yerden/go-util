@@ -37,6 +37,7 @@ type Mirror struct {
 	fmtValue Unmarshaller
 	index    int
 	scanCnt  int
+	input    chan string
 }
 
 func getEvent(channel string) string {
@@ -70,7 +71,7 @@ func NewMirror(c MirrorConfig) *Mirror {
 		scanCnt:  c.ScanCount}
 }
 
-func (m *Mirror) processQueries(ch <-chan string, ctx context.Context) {
+func (m *Mirror) processQueries(ctx context.Context, ch <-chan string) {
 	buf := make([]interface{}, 0, queryChannelBuf)
 	ticker := time.NewTicker(queryDrainInterval)
 	defer ticker.Stop()
@@ -137,21 +138,24 @@ func isClosed(ctx context.Context) bool {
 	}
 }
 
+func (m *Mirror) Scan() {
+	scanner := util.NewScanner(m.pool,
+		util.ScanOpts{Command: "SCAN", Count: m.scanCnt})
+	for scanner.HasNext() {
+		m.input <- scanner.Next()
+	}
+}
+
 func (m *Mirror) Mirror(ctx context.Context) {
-	ch := make(chan string, m.scanCnt)
+	m.input = make(chan string, m.scanCnt)
+	defer close(m.input)
 
 	newctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	go m.processQueries(ch, newctx)
+	go m.processQueries(newctx, m.input)
 
 	// bootstrap scan
-	go func() {
-		scanner := util.NewScanner(m.pool,
-			util.ScanOpts{Command: "SCAN", Count: m.scanCnt})
-		for scanner.HasNext() {
-			ch <- scanner.Next()
-		}
-	}()
+	go m.Scan()
 MAIN_LOOP:
 	for {
 		if isClosed(ctx) {
@@ -190,7 +194,7 @@ MAIN_LOOP:
 			key, event := resp.Message, getEvent(resp.Channel)
 			switch event {
 			case "expire":
-				ch <- key
+				m.input <- key
 			case "expired":
 				fallthrough
 			case "del":
