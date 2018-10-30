@@ -170,7 +170,7 @@ MAIN_LOOP:
 		eventFilter := fmt.Sprintf("__keyevent@%d__:*", m.index)
 		subcl := pubsub.NewSubClient(cl)
 		if resp := subcl.PSubscribe(eventFilter); resp.Err != nil {
-			fmt.Println("error subscribing to events:", err.Error())
+			fmt.Println("error subscribing to events:", resp.Err.Error())
 			cl.Close()
 			continue
 		}
