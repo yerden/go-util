@@ -159,3 +159,19 @@ func TestCBufferCornerCase2(t *testing.T) {
 	}
 	a.Equal(k, i)
 }
+
+func TestCBufferClear(t *testing.T) {
+	a := assert.New(t)
+	buf := &CBuffer{}
+
+	buf.Enqueue(1)
+	buf.Enqueue(2)
+	buf.Enqueue(3)
+	buf.Enqueue(4)
+	a.Equal(buf.Len(), 4)
+	buf.Clear()
+
+	a.Equal(buf.Len(), 0)
+	_, ok := buf.Dequeue()
+	a.NotTrue(ok)
+}
