@@ -184,7 +184,7 @@ MAIN_LOOP:
 			if resp.Timeout() {
 				continue
 			} else if resp.Err != nil {
-				fmt.Println("error receiving event:", err.Error())
+				fmt.Println("error receiving event:", resp.Err.Error())
 				cl.Close()
 				goto MAIN_LOOP
 			} else if resp.Type != pubsub.Message {
