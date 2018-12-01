@@ -19,46 +19,44 @@ func (m *LmdbMap) update(fn lmdb.TxnOp) error {
 	return m.Env.Update(fn)
 }
 
-func (m *LmdbMap) GetN(k, v []string) ([]string, error) {
-	if v == nil {
-		v = make([]string, len(k))
-	}
+func (m *LmdbMap) Get(key string) (res string, err error) {
+	err = m.Env.View(func(txn *lmdb.Txn) error {
+		b, err := txn.Get(m.Dbi, []byte(key))
+		if lmdb.IsNotFound(err) {
+			return ErrNotFound
+		} else if err != nil {
+			return err
+		}
+		res = string(b)
+		return nil
+	})
 
-	v = v[:0]
+	return
+}
+
+func (m *LmdbMap) Put(key, value string) error {
+	return m.update(func(txn *lmdb.Txn) error {
+		if err := txn.Put(m.Dbi, []byte(key), []byte(value), 0); err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+func (m *LmdbMap) Del(key string) error {
+	return m.update(func(txn *lmdb.Txn) error {
+		if err := txn.Del(m.Dbi, []byte(key), nil); err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+func (m *LmdbMap) Sample(keys []string) (int, error) {
+	// TODO
 	err := m.Env.View(func(txn *lmdb.Txn) error {
-		for _, key := range k {
-			b, err := txn.Get(m.Dbi, []byte(key))
-			if lmdb.IsNotFound(err) {
-				return ErrNotFound
-			} else if err != nil {
-				return err
-			}
-			v = append(v, string(b))
-		}
 		return nil
 	})
 
-	return v, err
-}
-
-func (m *LmdbMap) PutN(k, v []string) error {
-	return m.update(func(txn *lmdb.Txn) error {
-		for i, key := range k {
-			if err := txn.Put(m.Dbi, []byte(key), []byte(v[i]), 0); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-}
-
-func (m *LmdbMap) DelN(k []string) error {
-	return m.update(func(txn *lmdb.Txn) error {
-		for _, key := range k {
-			if err := txn.Del(m.Dbi, []byte(key), nil); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	return 0, err
 }
