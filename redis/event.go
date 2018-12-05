@@ -194,7 +194,7 @@ type TupleOp func(k, v interface{})
 // process them via TupleOp
 // if TupleOp returns false: stop and return latest error value
 // if error is encountered, finish and return it.
-func (r *Redis) Resolve(ctx context.Context, s util.Scanner, fn TupleOp) error {
+func (r *Redis) Consume(ctx context.Context, s util.Scanner, fn TupleOp) error {
 	ch := make(chan interface{}, queryChannelBuf)
 	errCh := make(chan error, 1)
 
@@ -233,7 +233,7 @@ func (r *Redis) Resolve(ctx context.Context, s util.Scanner, fn TupleOp) error {
 	for s.HasNext() {
 		select {
 		case <-ctx.Done():
-			return s.Err()
+			return ctx.Err()
 		case ch <- s.Next():
 		case err := <-errCh:
 			return err
@@ -243,11 +243,11 @@ func (r *Redis) Resolve(ctx context.Context, s util.Scanner, fn TupleOp) error {
 	return s.Err()
 }
 
-func (r *Redis) ResolveScan(ctx context.Context, fn TupleOp) error {
-	return r.Resolve(ctx, util.NewScanner(r.pool,
+func (r *Redis) ConsumeScan(ctx context.Context, fn TupleOp) error {
+	return r.Consume(ctx, util.NewScanner(r.pool,
 		util.ScanOpts{Command: "SCAN", Count: scanCount}), fn)
 }
 
-func (r *Redis) ResolveEvents(ctx context.Context, fn TupleOp) error {
-	return r.Resolve(ctx, r.NewKeyEventSource(), fn)
+func (r *Redis) ConsumeEvents(ctx context.Context, fn TupleOp) error {
+	return r.Consume(ctx, r.NewKeyEventSource(), fn)
 }
