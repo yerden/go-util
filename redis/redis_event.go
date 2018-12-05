@@ -9,6 +9,7 @@ import (
 	"github.com/mediocregopher/radix.v2/util"
 	"io"
 	"log"
+	"strings"
 	"time"
 )
 
@@ -24,6 +25,12 @@ const (
 	EventDel
 )
 
+const (
+	queryChannelBuf    = 128
+	queryDrainInterval = 100 * time.Millisecond
+	scanCount          = 200
+)
+
 type Redis struct {
 	pool  *pool.Pool
 	index int
@@ -34,10 +41,15 @@ type EventSource interface {
 	Err() error
 	Next() string
 	Type() int
+	Close()
 }
 
 var _ EventSource = (*events)(nil)
 var _ util.Scanner = EventSource(nil)
+
+func getEvent(channel string) string {
+	return strings.SplitN(channel, ":", 2)[1]
+}
 
 type events struct {
 	r      *Redis
@@ -96,6 +108,10 @@ func (e *events) disconnect() {
 	e.subcl = nil
 }
 
+func (e *events) Close() {
+	e.disconnect()
+}
+
 func (e *events) connect() bool {
 	e.cl, e.err = e.r.pool.Get()
 	if e.err != nil {
@@ -150,8 +166,6 @@ func (e *events) HasNext() bool {
 	}
 }
 
-type TupleOp func(k, v interface{})
-
 func (r *Redis) mGet(args, values []interface{}) ([]interface{}, error) {
 	resp := r.pool.Cmd("MGET", args...)
 	values = append(values[:0], make([]interface{}, len(args))...)
@@ -172,9 +186,12 @@ func (r *Redis) mGet(args, values []interface{}) ([]interface{}, error) {
 	return values, nil
 }
 
+// k/v pair handler
+// if v argument in TupleOp is nil then k is absent from db
+type TupleOp func(k, v interface{})
+
 // get keys from Scanner, GET them from redis, then
 // process them via TupleOp
-// if v argument in TupleOp is nil then k has no value in db
 // if TupleOp returns false: stop and return latest error value
 // if error is encountered, finish and return it.
 func (r *Redis) Resolve(ctx context.Context, s util.Scanner, fn TupleOp) error {
@@ -228,7 +245,7 @@ func (r *Redis) Resolve(ctx context.Context, s util.Scanner, fn TupleOp) error {
 
 func (r *Redis) ResolveScan(ctx context.Context, fn TupleOp) error {
 	return r.Resolve(ctx, util.NewScanner(r.pool,
-		util.ScanOpts{Command: "SCAN", Count: 200}), fn)
+		util.ScanOpts{Command: "SCAN", Count: scanCount}), fn)
 }
 
 func (r *Redis) ResolveEvents(ctx context.Context, fn TupleOp) error {
