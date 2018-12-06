@@ -30,5 +30,8 @@ func Msisdn(m *Mirror, input interface{}) (string, error) {
 	}
 
 	s, err := m.Get(key)
+	if err != nil {
+		return "", err
+	}
 	return KaxapMSISDN(s.(string)), err
 }
