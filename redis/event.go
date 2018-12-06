@@ -167,15 +167,11 @@ func (e *events) HasNext() bool {
 }
 
 func (r *Redis) mGet(args, values []interface{}) ([]interface{}, error) {
-	resp := r.pool.Cmd("MGET", args...)
-	values = append(values[:0], make([]interface{}, len(args))...)
-	if resp.Err != nil {
-		return nil, resp.Err
-	}
-	array, err := resp.Array()
+	array, err := r.pool.Cmd("MGET", args...).Array()
 	if err != nil {
 		return nil, err
 	}
+	values = append(values[:0], make([]interface{}, len(args))...)
 	for i, r := range array {
 		if v, err := r.Str(); err == nil {
 			values[i] = v
