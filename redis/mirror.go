@@ -57,9 +57,9 @@ func (m *Mirror) Get(key interface{}) (interface{}, error) {
 }
 
 func (m *Mirror) Scan() error {
-	return m.r.ResolveScan(context.Background(), m.kvHandler())
+	return m.r.ConsumeScan(context.Background(), m.kvHandler())
 }
 
 func (m *Mirror) Mirror(ctx context.Context) error {
-	return m.r.ResolveEvents(ctx, m.kvHandler())
+	return m.r.ConsumeEvents(ctx, m.kvHandler())
 }
