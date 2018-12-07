@@ -3,12 +3,7 @@ package redis
 import (
 	"context"
 	"fmt"
-	"github.com/mediocregopher/radix.v2/pool"
-	"github.com/mediocregopher/radix.v2/pubsub"
-	"github.com/mediocregopher/radix.v2/redis"
-	"github.com/mediocregopher/radix.v2/util"
-	"io"
-	"log"
+	"github.com/mediocregopher/radix"
 	"strings"
 	"time"
 )
@@ -26,224 +21,186 @@ const (
 )
 
 const (
+	readTimeout        = 10 * time.Second
 	queryChannelBuf    = 128
 	queryDrainInterval = 100 * time.Millisecond
 	scanCount          = 200
 )
 
 type Redis struct {
-	pool  *pool.Pool
-	index int
+	pool *radix.Pool
+	conf RedisConfig
 }
 
-type EventSource interface {
-	HasNext() bool
-	Err() error
-	Next() string
-	Type() int
-	Close()
-}
-
-var _ EventSource = (*events)(nil)
-var _ util.Scanner = EventSource(nil)
-
-func getEvent(channel string) string {
-	return strings.SplitN(channel, ":", 2)[1]
-}
-
-type events struct {
-	r      *Redis
-	filter string
-	cl     *redis.Client
-	subcl  *pubsub.SubClient
-
-	// next event
-	err error
-	typ int
-	key string
-}
-
-func (e *events) Type() int {
-	return e.typ
-}
-
-func (e *events) Next() string {
-	return e.key
-}
-
-func (e *events) Err() error {
-	return e.err
-}
-
-func logIfErr(prefix string, err error) {
-	if err != nil {
-		log.Println(prefix + ": " + err.Error())
-	}
-}
-
-func NewRedis(c RedisConfig) *Redis {
+func NewRedis(c RedisConfig) (*Redis, error) {
 	// XXX: "If an error is encountered an empty
 	// (but still usable) pool is returned alongside
 	// that error"
-	redisPool, _ := pool.New(c.Network, c.Addr, 10)
-	return &Redis{pool: redisPool, index: c.DbIndex}
+	connfn := func(network, addr string) (radix.Conn, error) {
+		return radix.Dial(network, addr,
+			radix.DialSelectDB(c.DbIndex),
+			radix.DialReadTimeout(readTimeout))
+	}
+	pool, err := radix.NewPool(c.Network, c.Addr, 10, radix.PoolConnFunc(connfn))
+	return &Redis{pool: pool, conf: c}, err
 }
 
 func (r *Redis) Get(key string) (string, error) {
-	return r.pool.Cmd("GET", key).Str()
+	var val string
+	return val, r.pool.Do(radix.Cmd(&val, "GET", key))
 }
 
-func (r *Redis) NewKeyEventSource() EventSource {
-	e := &events{
-		r:      r,
-		filter: fmt.Sprintf("__keyevent@%d__:*", r.index)}
-	return e
-}
-
-func (e *events) disconnect() {
-	if e.cl != nil {
-		e.cl.Close()
-		e.cl = nil
+/*
+ *
+ *func (r *Redis) NewKeyEventSource() EventSource {
+ *    connfn := func(network, addr string) (radix.Conn, error) {
+ *        return radix.Dial(network, addr,
+ *            radix.DialSelectDB(r.conf.DbIndex),
+ *            radix.DialReadTimeout(readTimeout))
+ *    }
+ *    e := &events{
+ *        r:     r,
+ *        fin:   make(chan bool),
+ *        ps:    radix.PersistentPubSub(r.conf.Network, r.conf.Addr, connfn),
+ *        msgCh: make(chan radix.PubSubMessage, queryChannelBuf)}
+ *    filter := fmt.Sprintf("__keyevent@%d__:*", r.conf.DbIndex)
+ *    // since we have persistent PubSubConn we ignore error for it is always nil
+ *    e.ps.PSubscribe(e.msgCh, filter)
+ *    return e
+ *}
+ *
+ *type EventSource interface {
+ *    Next(*string) bool
+ *    Type() int
+ *    Close() error
+ *}
+ *
+ *var _ EventSource = (*events)(nil)
+ *var _ radix.Scanner = EventSource(nil)
+ *
+ */
+func getEvent(channel string) string {
+	if s := strings.SplitN(channel, ":", 2); len(s) > 1 {
+		return s[1]
 	}
-	e.subcl = nil
+	return ""
 }
 
-func (e *events) Close() {
-	e.disconnect()
-}
-
-func (e *events) connect() bool {
-	e.cl, e.err = e.r.pool.Get()
-	if e.err != nil {
-		return false
-	}
-
-	e.subcl = pubsub.NewSubClient(e.cl)
-	resp := e.subcl.PSubscribe(e.filter)
-	e.err = resp.Err
-	return e.err == nil
-}
-
-func (e *events) HasNext() bool {
-	for {
-		if e.subcl == nil && !e.connect() {
-			return false
-		}
-		resp := e.subcl.Receive()
-		if resp.Timeout() {
-			// "You can use the Timeout() method on
-			// SubResp to easily determine if that
-			// is the case. If this is the case you
-			// can call Receive again to continue
-			// listening for publishes."
-			continue
-		} else if resp.Err == io.EOF {
-			// XXX: sometimes redis connection closes with EOF,
-			// fetch new one and retry
-			e.disconnect()
-			if !e.connect() {
-				return false
-			}
-			continue
-		} else if e.err = resp.Err; e.err != nil {
-			return false
-		} else if resp.Type != pubsub.Message {
-			continue
-		}
-
-		key, event := resp.Message, getEvent(resp.Channel)
-		e.err = nil
-		e.key = key
-		switch event {
-		case "expire":
-			e.typ = EventExpire
-		case "expired":
-			e.typ = EventExpired
-		case "del":
-			e.typ = EventDel
-		}
-		return true
-	}
-}
-
-func (r *Redis) mGet(args, values []interface{}) ([]interface{}, error) {
-	array, err := r.pool.Cmd("MGET", args...).Array()
-	if err != nil {
-		return nil, err
-	}
-	values = append(values[:0], make([]interface{}, len(args))...)
-	for i, r := range array {
-		if v, err := r.Str(); err == nil {
-			values[i] = v
-		} else { // if r.IsType(redis.Nil) {
-			values[i] = nil
-		}
-	}
-	return values, nil
-}
+/*
+ *type events struct {
+ *    r     *Redis
+ *    msgCh chan radix.PubSubMessage
+ *    ps    radix.PubSubConn
+ *    fin   chan bool
+ *    err   error
+ *    msg   radix.PubSubMessage
+ *}
+ *
+ *func (e *events) Close() error {
+ *    defer e.ps.Close()
+ *    close(e.fin)
+ *    return e.err
+ *}
+ *
+ *func (e *events) Next(out *string) bool {
+ *    for {
+ *        select {
+ *        case e.msg = <-e.msgCh:
+ *        case <-e.fin:
+ *            return false
+ *        }
+ *        if e.msg.Type == "pmessage" {
+ *            continue
+ *        }
+ *
+ *        //key, event := string(e.msg.Message), getEvent(e.msg.Channel)
+ *        *out = string(e.msg.Message)
+ *        return true
+ *    }
+ *}
+ */
 
 // k/v pair handler
 // if v argument in TupleOp is nil then k is absent from db
 type TupleOp func(k, v interface{})
 
-// get keys from Scanner, GET them from redis, then
-// process them via TupleOp
-// if TupleOp returns false: stop and return latest error value
-// if error is encountered, finish and return it.
-func (r *Redis) Consume(ctx context.Context, s util.Scanner, fn TupleOp) error {
-	ch := make(chan interface{}, queryChannelBuf)
-	errCh := make(chan error, 1)
+func (r *Redis) consume(ctx context.Context, msgCh <-chan radix.PubSubMessage, fn TupleOp) error {
+	args := make([]string, 0, queryChannelBuf)
+	values := make([]radix.MaybeNil, len(args))
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	go func(ctx context.Context) {
-		buf := make([]interface{}, 0, queryChannelBuf)
-		values := make([]interface{}, 0, queryChannelBuf)
-		ticker := time.NewTicker(queryDrainInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case k := <-ch:
-				if buf = append(buf, k); len(buf) < cap(buf) {
-					continue
-				}
-			case <-ticker.C:
-				if len(buf) == 0 {
-					continue
-				}
-			}
-			values, err := r.mGet(buf, values)
-			if err != nil {
-				errCh <- err
-				return
-			}
-			for i, key := range buf {
-				fn(key, values[i])
-			}
-			buf = buf[:0]
-		}
-	}(ctx)
+	for i, _ := range values {
+		values[i].Rcv = new(string)
+	}
 
-	for s.HasNext() {
+	ticker := time.NewTicker(queryDrainInterval)
+	defer ticker.Stop()
+
+	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case ch <- s.Next():
-		case err := <-errCh:
+		case msg := <-msgCh:
+			if msg.Message == nil {
+				// default message, channel is closing
+				return nil
+			}
+			if args = append(args, string(msg.Message)); len(args) < cap(args) {
+				continue
+			}
+		case <-ticker.C:
+			if len(args) == 0 {
+				continue
+			}
+		}
+
+		if err := r.pool.Do(radix.Cmd(&values, "MGET", args...)); err != nil {
 			return err
+		}
+		for i, v := range values {
+			if v.Nil {
+				fn(args[i], nil)
+			} else {
+				fn(args[i], *(v.Rcv.(*string)))
+			}
 		}
 	}
 
-	return s.Err()
+	return nil
+}
+
+func (r *Redis) ConsumeKeyEvents(ctx context.Context, fn TupleOp) error {
+	msgCh := make(chan radix.PubSubMessage, queryChannelBuf)
+	defer close(msgCh)
+
+	// subscribe
+	ps := radix.PersistentPubSub(r.conf.Network, r.conf.Addr,
+		func(network, addr string) (radix.Conn, error) {
+			return radix.Dial(network, addr, radix.DialReadTimeout(readTimeout))
+		})
+	defer ps.Close()
+	ps.PSubscribe(msgCh, fmt.Sprintf("__keyevent@%d__:*", r.conf.DbIndex))
+
+	return r.consume(ctx, msgCh, fn)
 }
 
 func (r *Redis) ConsumeScan(ctx context.Context, fn TupleOp) error {
-	return r.Consume(ctx, util.NewScanner(r.pool,
-		util.ScanOpts{Command: "SCAN", Count: scanCount}), fn)
-}
+	scanner := radix.NewScanner(r.pool, radix.ScanOpts{Command: "SCAN", Count: scanCount})
+	errCh := make(chan error, 1)
+	msgCh := make(chan radix.PubSubMessage, queryChannelBuf)
 
-func (r *Redis) ConsumeEvents(ctx context.Context, fn TupleOp) error {
-	return r.Consume(ctx, r.NewKeyEventSource(), fn)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func(ctx context.Context) { errCh <- r.consume(ctx, msgCh, fn) }(ctx)
+	var key string
+	for scanner.Next(&key) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-errCh:
+			return err
+		case msgCh <- radix.PubSubMessage{Message: []byte(key)}:
+		}
+	}
+
+	return scanner.Close()
 }

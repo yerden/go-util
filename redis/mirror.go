@@ -21,13 +21,12 @@ type Mirror struct {
 	store *sync.Map
 }
 
-func NewMirror(c MirrorConfig) *Mirror {
-	return &Mirror{
-		r: NewRedis(RedisConfig{
-			Addr:    c.Addr,
-			Network: c.Network,
-			DbIndex: c.DbIndex}),
-		store: new(sync.Map)}
+func NewMirror(c MirrorConfig) (*Mirror, error) {
+	r, err := NewRedis(RedisConfig{
+		Addr:    c.Addr,
+		Network: c.Network,
+		DbIndex: c.DbIndex})
+	return &Mirror{r: r, store: new(sync.Map)}, err
 }
 
 func (m *Mirror) SyncMap() *sync.Map {
@@ -61,5 +60,5 @@ func (m *Mirror) Scan() error {
 }
 
 func (m *Mirror) Mirror(ctx context.Context) error {
-	return m.r.ConsumeEvents(ctx, m.kvHandler())
+	return m.r.ConsumeKeyEvents(ctx, m.kvHandler())
 }
