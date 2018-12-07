@@ -50,35 +50,6 @@ func (r *Redis) Get(key string) (string, error) {
 	return val, r.pool.Do(radix.Cmd(&val, "GET", key))
 }
 
-/*
- *
- *func (r *Redis) NewKeyEventSource() EventSource {
- *    connfn := func(network, addr string) (radix.Conn, error) {
- *        return radix.Dial(network, addr,
- *            radix.DialSelectDB(r.conf.DbIndex),
- *            radix.DialReadTimeout(readTimeout))
- *    }
- *    e := &events{
- *        r:     r,
- *        fin:   make(chan bool),
- *        ps:    radix.PersistentPubSub(r.conf.Network, r.conf.Addr, connfn),
- *        msgCh: make(chan radix.PubSubMessage, queryChannelBuf)}
- *    filter := fmt.Sprintf("__keyevent@%d__:*", r.conf.DbIndex)
- *    // since we have persistent PubSubConn we ignore error for it is always nil
- *    e.ps.PSubscribe(e.msgCh, filter)
- *    return e
- *}
- *
- *type EventSource interface {
- *    Next(*string) bool
- *    Type() int
- *    Close() error
- *}
- *
- *var _ EventSource = (*events)(nil)
- *var _ radix.Scanner = EventSource(nil)
- *
- */
 func getEvent(channel string) string {
 	if s := strings.SplitN(channel, ":", 2); len(s) > 1 {
 		return s[1]
@@ -86,44 +57,12 @@ func getEvent(channel string) string {
 	return ""
 }
 
-/*
- *type events struct {
- *    r     *Redis
- *    msgCh chan radix.PubSubMessage
- *    ps    radix.PubSubConn
- *    fin   chan bool
- *    err   error
- *    msg   radix.PubSubMessage
- *}
- *
- *func (e *events) Close() error {
- *    defer e.ps.Close()
- *    close(e.fin)
- *    return e.err
- *}
- *
- *func (e *events) Next(out *string) bool {
- *    for {
- *        select {
- *        case e.msg = <-e.msgCh:
- *        case <-e.fin:
- *            return false
- *        }
- *        if e.msg.Type == "pmessage" {
- *            continue
- *        }
- *
- *        //key, event := string(e.msg.Message), getEvent(e.msg.Channel)
- *        *out = string(e.msg.Message)
- *        return true
- *    }
- *}
- */
-
 // k/v pair handler
 // if v argument in TupleOp is nil then k is absent from db
 type TupleOp func(k, v interface{})
 
+// receive PubSubMessages via channel, evaluate in Redis and
+// feed to handler
 func (r *Redis) consume(ctx context.Context, msgCh <-chan radix.PubSubMessage, fn TupleOp) error {
 	args := make([]string, 0, queryChannelBuf)
 	values := make([]radix.MaybeNil, len(args))
@@ -163,6 +102,7 @@ func (r *Redis) consume(ctx context.Context, msgCh <-chan radix.PubSubMessage, f
 				fn(args[i], *(v.Rcv.(*string)))
 			}
 		}
+		args = args[:0]
 	}
 
 	return nil
