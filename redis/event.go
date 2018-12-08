@@ -3,7 +3,7 @@ package redis
 import (
 	"context"
 	"fmt"
-	"github.com/mediocregopher/radix"
+	"github.com/mediocregopher/radix/v3"
 	"strings"
 	"time"
 )
