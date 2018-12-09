@@ -82,10 +82,19 @@ func logIfErr(prefix string, err error) {
 }
 
 func NewRedis(c RedisConfig) (*Redis, error) {
-	// XXX: "If an error is encountered an empty
-	// (but still usable) pool is returned alongside
-	// that error"
-	redisPool, err := pool.New(c.Network, c.Addr, 10)
+	db := fmt.Sprintf("%d", c.DbIndex)
+	df := func(network, addr string) (*redis.Client, error) {
+		cl, err := redis.Dial(network, addr)
+		if err != nil {
+			return nil, err
+		}
+		if err = cl.Cmd("SELECT", db).Err; err != nil {
+			cl.Close()
+			return nil, err
+		}
+		return cl, nil
+	}
+	redisPool, err := pool.NewCustom(c.Network, c.Addr, 10, df)
 	return &Redis{pool: redisPool, index: c.DbIndex}, err
 }
 
