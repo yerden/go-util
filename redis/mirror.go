@@ -33,13 +33,14 @@ func (m *Mirror) SyncMap() *sync.Map {
 	return m.store
 }
 
-func (m *Mirror) kvHandler() func(k, v interface{}) {
-	return func(k, v interface{}) {
+func (m *Mirror) kvHandler() TupleOp {
+	return func(k, v interface{}) bool {
 		if v == nil {
 			m.store.Delete(k)
 		} else {
 			m.store.Store(k, v)
 		}
+		return true
 	}
 }
 

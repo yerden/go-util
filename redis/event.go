@@ -193,7 +193,9 @@ func (r *Redis) mGet(args, values []interface{}) ([]interface{}, error) {
 
 // k/v pair handler
 // if v argument in TupleOp is nil then k is absent from db
-type TupleOp func(k, v interface{})
+// may also be used for iteration, then the bool
+// return value may be used to exit iteration
+type TupleOp func(k, v interface{}) bool
 
 // get keys from Scanner, GET them from redis, then
 // process them via TupleOp
