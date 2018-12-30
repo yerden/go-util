@@ -208,33 +208,7 @@ func (r *Redis) consume(ctx context.Context, s util.Scanner, fn TupleOp) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go func(ctx context.Context) {
-		buf := make([]interface{}, 0, queryChannelBuf)
-		values := make([]interface{}, 0, queryChannelBuf)
-		ticker := time.NewTicker(queryDrainInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case k := <-ch:
-				if buf = append(buf, k); len(buf) < cap(buf) {
-					continue
-				}
-			case <-ticker.C:
-				if len(buf) == 0 {
-					continue
-				}
-			}
-			values, err := r.mGet(buf, values)
-			if err != nil {
-				errCh <- err
-				return
-			}
-			for i, key := range buf {
-				fn(key, values[i])
-			}
-			buf = buf[:0]
-		}
+		errCh <- r.ConsumeKeyChan(ctx, ch, fn)
 	}(ctx)
 
 	for s.HasNext() {
@@ -257,4 +231,38 @@ func (r *Redis) ConsumeScan(ctx context.Context, fn TupleOp) error {
 
 func (r *Redis) ConsumeKeyEvents(ctx context.Context, fn TupleOp) error {
 	return r.consume(ctx, r.NewKeyEventSource(), fn)
+}
+
+func (r *Redis) ConsumeKeyChan(ctx context.Context, ch <-chan interface{}, fn TupleOp) error {
+	buf := make([]interface{}, 0, queryChannelBuf)
+	values := make([]interface{}, 0, queryChannelBuf)
+	ticker := time.NewTicker(queryDrainInterval)
+	defer ticker.Stop()
+	var k interface{}
+	var ok bool = true
+	for ok {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case k, ok = <-ch:
+			if ok {
+				if buf = append(buf, k); len(buf) < cap(buf) {
+					continue
+				}
+			}
+		case <-ticker.C:
+			if len(buf) == 0 {
+				continue
+			}
+		}
+		values, err := r.mGet(buf, values)
+		if err != nil {
+			return err
+		}
+		for i, key := range buf {
+			fn(key, values[i])
+		}
+		buf = buf[:0]
+	}
+	return nil
 }
