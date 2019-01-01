@@ -3,14 +3,16 @@ package redis
 import (
 	"context"
 	"fmt"
-	"github.com/mediocregopher/radix.v2/pool"
-	"github.com/mediocregopher/radix.v2/pubsub"
-	"github.com/mediocregopher/radix.v2/redis"
-	"github.com/mediocregopher/radix.v2/util"
 	"io"
 	"log"
 	"strings"
 	"time"
+
+	"github.com/mediocregopher/radix.v2/pool"
+	"github.com/mediocregopher/radix.v2/pubsub"
+	"github.com/mediocregopher/radix.v2/redis"
+	"github.com/mediocregopher/radix.v2/util"
+	"github.com/yerden/go-util/common"
 )
 
 type RedisConfig struct {
@@ -36,20 +38,11 @@ type Redis struct {
 	index int
 }
 
-type EventSource interface {
-	HasNext() bool
-	Err() error
-	Next() string
-	Type() int
-	Close()
-}
-
-var _ EventSource = (*events)(nil)
-var _ util.Scanner = EventSource(nil)
-
 func getEvent(channel string) string {
 	return strings.SplitN(channel, ":", 2)[1]
 }
+
+var _ common.Scanner = (*events)(nil)
 
 type events struct {
 	r      *Redis
@@ -67,7 +60,11 @@ func (e *events) Type() int {
 	return e.typ
 }
 
-func (e *events) Next() string {
+func (e *events) Bytes() []byte {
+	return []byte(e.key)
+}
+
+func (e *events) Text() string {
 	return e.key
 }
 
@@ -102,7 +99,7 @@ func (r *Redis) Get(key string) (string, error) {
 	return r.pool.Cmd("GET", key).Str()
 }
 
-func (r *Redis) NewKeyEventSource() EventSource {
+func (r *Redis) NewKeyEventSource() common.Scanner {
 	e := &events{
 		r:      r,
 		filter: fmt.Sprintf("__keyevent@%d__:*", r.index)}
@@ -133,7 +130,7 @@ func (e *events) connect() bool {
 	return e.err == nil
 }
 
-func (e *events) HasNext() bool {
+func (e *events) Scan() bool {
 	for {
 		if e.subcl == nil && !e.connect() {
 			return false
@@ -201,7 +198,7 @@ type TupleOp func(k, v interface{}) bool
 // process them via TupleOp
 // if TupleOp returns false: stop and return latest error value
 // if error is encountered, finish and return it.
-func (r *Redis) consume(ctx context.Context, s util.Scanner, fn TupleOp) error {
+func (r *Redis) ConsumeScanner(ctx context.Context, s common.Scanner, fn TupleOp) error {
 	ch := make(chan interface{}, queryChannelBuf)
 	errCh := make(chan error, 1)
 
@@ -211,11 +208,11 @@ func (r *Redis) consume(ctx context.Context, s util.Scanner, fn TupleOp) error {
 		errCh <- r.ConsumeKeyChan(ctx, ch, fn)
 	}(ctx)
 
-	for s.HasNext() {
+	for s.Scan() {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case ch <- s.Next():
+		case ch <- s.Text():
 		case err := <-errCh:
 			return err
 		}
@@ -224,13 +221,30 @@ func (r *Redis) consume(ctx context.Context, s util.Scanner, fn TupleOp) error {
 	return s.Err()
 }
 
+type utilScanner struct {
+	util.Scanner
+}
+
+func (s *utilScanner) Bytes() []byte {
+	return []byte(s.Next())
+}
+
+func (s *utilScanner) Text() string {
+	return s.Next()
+}
+
+func (s *utilScanner) Scan() bool {
+	return s.HasNext()
+}
+
 func (r *Redis) ConsumeScan(ctx context.Context, fn TupleOp) error {
-	return r.consume(ctx, util.NewScanner(r.pool,
-		util.ScanOpts{Command: "SCAN", Count: scanCount}), fn)
+	us := util.NewScanner(r.pool,
+		util.ScanOpts{Command: "SCAN", Count: scanCount})
+	return r.ConsumeScanner(ctx, &utilScanner{us}, fn)
 }
 
 func (r *Redis) ConsumeKeyEvents(ctx context.Context, fn TupleOp) error {
-	return r.consume(ctx, r.NewKeyEventSource(), fn)
+	return r.ConsumeScanner(ctx, r.NewKeyEventSource(), fn)
 }
 
 func (r *Redis) ConsumeKeyChan(ctx context.Context, ch <-chan interface{}, fn TupleOp) error {
