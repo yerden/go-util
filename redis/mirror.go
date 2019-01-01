@@ -57,9 +57,12 @@ func (m *Mirror) Get(key interface{}) (interface{}, error) {
 }
 
 func (m *Mirror) Scan() error {
-	return m.r.ConsumeScan(context.Background(), m.kvHandler())
+	s := m.r.NewScanner(200)
+	return m.r.ConsumeScanner(context.Background(), s, m.kvHandler())
 }
 
 func (m *Mirror) Mirror(ctx context.Context) error {
-	return m.r.ConsumeKeyEvents(ctx, m.kvHandler())
+	s := m.r.NewKeyEventSource()
+	defer s.Close()
+	return m.r.ConsumeScanner(ctx, s, m.kvHandler())
 }
