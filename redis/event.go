@@ -238,7 +238,7 @@ func (s *utilScanner) Scan() bool {
 
 func (r *Redis) NewScanner(window int) common.Scanner {
 	return &utilScanner{util.NewScanner(r.pool,
-		util.ScanOpts{Command: "SCAN", Count: scanCount})}
+		util.ScanOpts{Command: "SCAN", Count: window})}
 }
 
 func (r *Redis) ConsumeKeyChan(ctx context.Context, ch <-chan interface{}, fn TupleOp) error {
