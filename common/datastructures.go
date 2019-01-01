@@ -26,4 +26,9 @@ type Scanner interface {
 	Err() error
 }
 
+type ScanCloser interface {
+	Scanner
+	Close()
+}
+
 var _ Scanner = (*bufio.Scanner)(nil)
