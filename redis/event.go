@@ -30,7 +30,6 @@ const (
 const (
 	queryChannelBuf    = 128
 	queryDrainInterval = 100 * time.Millisecond
-	scanCount          = 200
 )
 
 type Redis struct {
@@ -99,7 +98,7 @@ func (r *Redis) Get(key string) (string, error) {
 	return r.pool.Cmd("GET", key).Str()
 }
 
-func (r *Redis) NewKeyEventSource() common.Scanner {
+func (r *Redis) NewKeyEventSource() common.ScanCloser {
 	e := &events{
 		r:      r,
 		filter: fmt.Sprintf("__keyevent@%d__:*", r.index)}
@@ -237,14 +236,9 @@ func (s *utilScanner) Scan() bool {
 	return s.HasNext()
 }
 
-func (r *Redis) ConsumeScan(ctx context.Context, fn TupleOp) error {
-	us := util.NewScanner(r.pool,
-		util.ScanOpts{Command: "SCAN", Count: scanCount})
-	return r.ConsumeScanner(ctx, &utilScanner{us}, fn)
-}
-
-func (r *Redis) ConsumeKeyEvents(ctx context.Context, fn TupleOp) error {
-	return r.ConsumeScanner(ctx, r.NewKeyEventSource(), fn)
+func (r *Redis) NewScanner(window int) common.Scanner {
+	return &utilScanner{util.NewScanner(r.pool,
+		util.ScanOpts{Command: "SCAN", Count: scanCount})}
 }
 
 func (r *Redis) ConsumeKeyChan(ctx context.Context, ch <-chan interface{}, fn TupleOp) error {
