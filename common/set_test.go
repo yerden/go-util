@@ -2,6 +2,7 @@ package common
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 )
 
@@ -82,4 +83,80 @@ func TestSetMarshal(t *testing.T) {
 	for i := 16; i < 23; i++ {
 		assert(b.IsSet(i))
 	}
+}
+
+func ExampleSet_UnmarshalHex() {
+	var b Set
+	s := "1f" // 0, 1, 2, 3, 4
+
+	err := b.UnmarshalHex([]byte(s))
+	if err != nil {
+		return
+	}
+
+	var list []int
+	b.Iterate(func(c int) {
+		list = append(list, c)
+	})
+
+	fmt.Println(list)
+	// Output: [0 1 2 3 4]
+}
+
+func ExampleSet_MarshalHex() {
+	var b Set
+
+	b.Set(0)
+	b.Set(1)
+	b.Set(2)
+	b.Set(3)
+	b.Set(4)
+
+	s, err := b.MarshalHex()
+	if err != nil {
+		return
+	}
+
+	fmt.Println(string(s))
+	// Output: 1f
+}
+
+func ExampleSet_Merge() {
+	var a, b Set
+
+	a.Set(0)
+	a.Set(1)
+
+	b.Set(1)
+	b.Set(2)
+
+	a.Merge(&b)
+
+	var list []int
+	a.Iterate(func(c int) {
+		list = append(list, c)
+	})
+
+	fmt.Println(list)
+	// Output: [0 1 2]
+}
+
+func ExampleSet_Cut() {
+	var a, b Set
+
+	a.Set(0)
+	a.Set(1)
+
+	b.Set(1)
+	b.Set(2)
+
+	a.Cut(&b)
+
+	var list []int
+	a.Iterate(func(c int) {
+		list = append(list, c)
+	})
+
+	fmt.Println(list)
+	// Output: [0]
 }

@@ -109,12 +109,12 @@ func (b *Set) Iterate(fn func(int)) {
 
 // Merge add all members of src to set.
 func (b *Set) Merge(src *Set) {
-	src.Iterate(func(c int) { b.Set(c) })
+	src.Iterate(b.Set)
 }
 
 // Cut removes all members of src from set.
 func (b *Set) Cut(src *Set) {
-	src.Iterate(func(c int) { b.Clear(c) })
+	src.Iterate(b.Clear)
 }
 
 // MarshalHex marshals set internal representation
