@@ -16,10 +16,10 @@ func newAssert(t *testing.T, fail bool) func(bool) {
 	}
 }
 
-func TestBitmask(t *testing.T) {
+func TestSet(t *testing.T) {
 	assert := newAssert(t, false)
 
-	b := new(Bitmask)
+	b := new(Set)
 	b.Set(0)
 	assert(b.IsSet(0))
 	assert(!b.IsSet(1))
@@ -41,15 +41,19 @@ func TestBitmask(t *testing.T) {
 	b.Set(2)
 	b.Set(4)
 	b.Set(1)
-	assert(b.Count() == 3)
+	b.Set(104)
+	b.Set(50)
+	assert(b.Count() == 5)
 	assert(b.IsSet(1))
 	assert(b.IsSet(2))
 	assert(b.IsSet(4))
+	assert(b.IsSet(104))
+	assert(b.IsSet(50))
 }
 
-func TestBitmask2(t *testing.T) {
+func TestSetMarshal(t *testing.T) {
 	assert := newAssert(t, false)
-	var b Bitmask
+	var b Set
 
 	b.Set(0)
 	b.Set(2)
@@ -68,4 +72,14 @@ func TestBitmask2(t *testing.T) {
 
 	err = b.UnmarshalHex([]byte("j2"))
 	assert(err != nil)
+
+	b.Zero()
+	assert(nil == b.UnmarshalHex([]byte("0ff00ff")))
+	assert(b.Count() == 16)
+	for i := 0; i < 8; i++ {
+		assert(b.IsSet(i))
+	}
+	for i := 16; i < 23; i++ {
+		assert(b.IsSet(i))
+	}
 }

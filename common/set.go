@@ -12,7 +12,11 @@ const (
 	byteBits = 8
 )
 
-type Bitmask struct {
+// Set is a set of integer numbers. Basic set operations
+// are possible such as Set, Clear, Zero, IsSet. Possible
+// applications may be set of CPU cores, integer numbers
+// storage etc.
+type Set struct {
 	shift []int
 }
 
@@ -47,13 +51,22 @@ func reverse(data []byte) {
 	}
 }
 
-func (b *Bitmask) find(n int) (idx int, found bool) {
+// NewSet creates new set. elts is an array
+// of integers. Set takes control over elts after
+// this call so it may not be used thereafter.
+func NewSet(elts []int) *Set {
+	sort.Ints(elts)
+	return &Set{elts}
+}
+
+func (b *Set) find(n int) (idx int, found bool) {
 	idx = sort.SearchInts(b.shift, n)
 	found = idx < len(b.shift) && b.shift[idx] == n
 	return
 }
 
-func (b *Bitmask) Set(n int) {
+// Set adds n to the set.
+func (b *Set) Set(n int) {
 	if i, found := b.find(n); !found {
 		tail := b.shift[i:]
 		b.shift = append(b.shift, n)
@@ -64,35 +77,52 @@ func (b *Bitmask) Set(n int) {
 	}
 }
 
-func (b *Bitmask) Clear(n int) {
+// Set removes n to the set.
+func (b *Set) Clear(n int) {
 	if i, found := b.find(n); found {
 		b.shift = append(b.shift[:i], b.shift[i+1:]...)
 	}
 }
 
-func (b *Bitmask) IsSet(n int) bool {
+// IsSet tells if n is in set.
+func (b *Set) IsSet(n int) bool {
 	_, found := b.find(n)
 	return found
 }
 
-func (b *Bitmask) Zero() {
+// Zero clears out the set.
+func (b *Set) Zero() {
 	b.shift = b.shift[:0]
 }
 
-func (b *Bitmask) Count() int {
+// Count returns number of elements in set.
+func (b *Set) Count() int {
 	return len(b.shift)
 }
 
-func (b *Bitmask) Iterate(fn func(int)) {
+// Iterate scrolls through members of set.
+func (b *Set) Iterate(fn func(int)) {
 	for _, c := range b.shift {
 		fn(c)
 	}
 }
 
-func (b *Bitmask) MarshalHex() ([]byte, error) {
+// Merge add all members of src to set.
+func (b *Set) Merge(src *Set) {
+	src.Iterate(func(c int) { b.Set(c) })
+}
+
+// Cut removes all members of src from set.
+func (b *Set) Cut(src *Set) {
+	src.Iterate(func(c int) { b.Clear(c) })
+}
+
+// MarshalHex marshals set internal representation
+// to hexadecimal big-endian string.
+func (b *Set) MarshalHex() ([]byte, error) {
 	var mask []byte
-	for _, n := range b.shift {
-		mask = set(n, mask)
+	for i, _ := range b.shift {
+		mask = set(b.shift[len(b.shift)-i-1], mask)
 	}
 
 	buf := bytes.NewBuffer(make([]byte, 0, 32))
@@ -101,7 +131,9 @@ func (b *Bitmask) MarshalHex() ([]byte, error) {
 	return buf.Bytes(), err
 }
 
-func (b *Bitmask) UnmarshalHex(text []byte) (err error) {
+// UnmarshalHex unmarshals hexadecimal big-endian string
+// into its own internal representation.
+func (b *Set) UnmarshalHex(text []byte) (err error) {
 	// padding
 	if len(text)&0x1 != 0 {
 		text = append([]byte{'0'}, text...)
