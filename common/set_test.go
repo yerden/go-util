@@ -160,3 +160,37 @@ func ExampleSet_Cut() {
 	fmt.Println(list)
 	// Output: [0]
 }
+
+func ExampleSet_UnmarshalText() {
+	var b Set
+	if err := b.UnmarshalText([]byte("1-4,6,7")); err != nil {
+		return
+	}
+
+	fmt.Println(b.Count() == 6 &&
+		b.IsSet(1) &&
+		b.IsSet(2) &&
+		b.IsSet(3) &&
+		b.IsSet(4) &&
+		b.IsSet(6) &&
+		b.IsSet(7))
+	// Output: true
+}
+
+func ExampleSet_MarshalText() {
+	var b Set
+	b.Set(0)
+	b.Set(2)
+	b.Set(3)
+	b.Set(4)
+	b.Set(6)
+	b.Set(7)
+	b.Set(11)
+
+	text, err := b.MarshalText()
+	if err != nil {
+		return
+	}
+	fmt.Println(string(text))
+	// Output: 0,2-4,6-7,11
+}

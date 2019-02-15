@@ -3,7 +3,7 @@ package common
 import (
 	"bytes"
 	"encoding/hex"
-	// "fmt"
+	"fmt"
 	"io"
 	"sort"
 )
@@ -149,4 +149,81 @@ func (b *Set) UnmarshalHex(text []byte) (err error) {
 	}
 
 	return err
+}
+
+// UnmarshalText unmarshals comma/hyphen separated list of elements
+// into its own internal representation.
+func (b *Set) UnmarshalText(text []byte) error {
+	b.Zero()
+	var err error
+	var token []byte
+	for len(text) > 0 {
+		if i := bytes.IndexByte(text, ','); i < 0 {
+			token, text = text, text[:0]
+		} else {
+			token, text = text[:i], text[i+1:]
+		}
+		if len(token) == 0 {
+			return fmt.Errorf("invalid format")
+		}
+		s, e := 0, 0
+		if i := bytes.IndexByte(token, '-'); i < 0 {
+			_, err = fmt.Sscanf(string(token), "%d", &s)
+			e = s
+		} else {
+			_, err = fmt.Sscanf(string(token), "%d-%d", &s, &e)
+		}
+
+		if err != nil {
+			return err
+		}
+		for i := s; i <= e; i++ {
+			b.Set(i)
+		}
+	}
+
+	return nil
+}
+
+// MarshalHex marshals set internal representation
+// into to comma/hyphen separated list of elements.
+func (b *Set) MarshalText() ([]byte, error) {
+	var buf bytes.Buffer
+	token := make([]int, 0, 2)
+
+	save := func() {
+		if len(token) == 0 {
+			return
+		}
+		if buf.Len() > 0 {
+			fmt.Fprint(&buf, ",")
+		}
+		if len(token) == 1 {
+			fmt.Fprintf(&buf, "%d", token[0])
+		} else if len(token) == 2 {
+			fmt.Fprintf(&buf, "%d-%d", token[0], token[1])
+		}
+	}
+
+	b.Iterate(func(c int) {
+		switch len(token) {
+		case 0:
+			token = append(token, c)
+			return
+		case 1:
+			if c == token[0]+1 {
+				token = append(token, c)
+				return
+			}
+		case 2:
+			if c == token[1]+1 {
+				token[1] = c
+				return
+			}
+		}
+		save()
+		token = append(token[:0], c)
+	})
+	save()
+	return buf.Bytes(), nil
 }
