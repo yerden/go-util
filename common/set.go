@@ -12,11 +12,43 @@ const (
 	byteBits = 8
 )
 
-// Set is a set of integer numbers. Basic set operations
-// are possible such as Set, Clear, Zero, IsSet. Possible
+type Set interface {
+	Set(int)
+	Clear(int)
+	IsSet(int) bool
+	Zero()
+	Count() int
+}
+
+type SetIterable interface {
+	Set
+
+	// sorted iterator
+	Iterate(func(int))
+}
+
+// SetIterate scrolls through Set via native Iterate method
+// or using a fallback to try-and-check non-negative index
+// loop.
+func SetIterate(b Set, fn func(int)) {
+	if bi, ok := b.(SetIterable); ok {
+		bi.Iterate(fn)
+		return
+	}
+
+	for i, cnt := 0, 0; cnt < b.Count(); i++ {
+		if b.IsSet(i) {
+			fn(i)
+			cnt++
+		}
+	}
+}
+
+// SetInt is a set of integer numbers. Basic set operations
+// are possible such as SetInt, Clear, Zero, IsSet. Possible
 // applications may be set of CPU cores, integer numbers
 // storage etc.
-type Set struct {
+type SetInt struct {
 	shift []int
 }
 
@@ -52,21 +84,21 @@ func reverse(data []byte) {
 }
 
 // NewSet creates new set. elts is an array
-// of integers. Set takes control over elts after
+// of integers. SetInt takes control over elts after
 // this call so it may not be used thereafter.
-func NewSet(elts []int) *Set {
+func NewSetInt(elts ...int) *SetInt {
 	sort.Ints(elts)
-	return &Set{elts}
+	return &SetInt{elts}
 }
 
-func (b *Set) find(n int) (idx int, found bool) {
+func (b *SetInt) find(n int) (idx int, found bool) {
 	idx = sort.SearchInts(b.shift, n)
 	found = idx < len(b.shift) && b.shift[idx] == n
 	return
 }
 
-// Set adds n to the set.
-func (b *Set) Set(n int) {
+// SetInt adds n to the set.
+func (b *SetInt) Set(n int) {
 	if i, found := b.find(n); !found {
 		tail := b.shift[i:]
 		b.shift = append(b.shift, n)
@@ -77,63 +109,64 @@ func (b *Set) Set(n int) {
 	}
 }
 
-// Set removes n to the set.
-func (b *Set) Clear(n int) {
+// SetInt removes n to the set.
+func (b *SetInt) Clear(n int) {
 	if i, found := b.find(n); found {
 		b.shift = append(b.shift[:i], b.shift[i+1:]...)
 	}
 }
 
 // IsSet tells if n is in set.
-func (b *Set) IsSet(n int) bool {
+func (b *SetInt) IsSet(n int) bool {
 	_, found := b.find(n)
 	return found
 }
 
 // Zero clears out the set.
-func (b *Set) Zero() {
+func (b *SetInt) Zero() {
 	b.shift = b.shift[:0]
 }
 
 // Count returns number of elements in set.
-func (b *Set) Count() int {
+func (b *SetInt) Count() int {
 	return len(b.shift)
 }
 
 // Iterate scrolls through members of set.
-func (b *Set) Iterate(fn func(int)) {
+func (b *SetInt) Iterate(fn func(int)) {
 	for _, c := range b.shift {
 		fn(c)
 	}
 }
 
 // Merge add all members of src to set.
-func (b *Set) Merge(src *Set) {
+func (b *SetInt) Merge(src SetIterable) {
 	src.Iterate(b.Set)
 }
 
 // Cut removes all members of src from set.
-func (b *Set) Cut(src *Set) {
+func (b *SetInt) Cut(src SetIterable) {
 	src.Iterate(b.Clear)
 }
 
-// MarshalHex marshals set internal representation
+// MarshalHex marshals SetIterable's internal representation
 // to hexadecimal big-endian string.
-func (b *Set) MarshalHex() ([]byte, error) {
+func MarshalHex(b Set) ([]byte, error) {
 	var mask []byte
-	for i, _ := range b.shift {
-		mask = set(b.shift[len(b.shift)-i-1], mask)
-	}
+	SetIterate(b, func(c int) {
+		mask = set(c, mask)
+	})
 
 	buf := bytes.NewBuffer(make([]byte, 0, 32))
 	enc := hex.NewEncoder(buf)
 	_, err := enc.Write(mask)
 	return buf.Bytes(), err
+
 }
 
 // UnmarshalHex unmarshals hexadecimal big-endian string
-// into its own internal representation.
-func (b *Set) UnmarshalHex(text []byte) (err error) {
+// into Set's internal representation.
+func UnmarshalHex(b Set, text []byte) (err error) {
 	// padding
 	if len(text)&0x1 != 0 {
 		text = append([]byte{'0'}, text...)
@@ -152,8 +185,8 @@ func (b *Set) UnmarshalHex(text []byte) (err error) {
 }
 
 // UnmarshalText unmarshals comma/hyphen separated list of elements
-// into its own internal representation.
-func (b *Set) UnmarshalText(text []byte) error {
+// into Set's internal representation.
+func UnmarshalText(b Set, text []byte) error {
 	b.Zero()
 	var err error
 	var token []byte
@@ -185,9 +218,9 @@ func (b *Set) UnmarshalText(text []byte) error {
 	return nil
 }
 
-// MarshalHex marshals set internal representation
+// MarshalText marshals SetIterable internal representation
 // into to comma/hyphen separated list of elements.
-func (b *Set) MarshalText() ([]byte, error) {
+func MarshalText(b Set) ([]byte, error) {
 	var buf bytes.Buffer
 	token := make([]int, 0, 2)
 
@@ -205,7 +238,7 @@ func (b *Set) MarshalText() ([]byte, error) {
 		}
 	}
 
-	b.Iterate(func(c int) {
+	SetIterate(b, func(c int) {
 		switch len(token) {
 		case 0:
 			token = append(token, c)
@@ -226,4 +259,48 @@ func (b *Set) MarshalText() ([]byte, error) {
 	})
 	save()
 	return buf.Bytes(), nil
+}
+
+type SetMap struct {
+	hash map[int]bool
+}
+
+func NewSetMap(elts ...int) *SetMap {
+	b := &SetMap{make(map[int]bool)}
+	for _, c := range elts {
+		b.hash[c] = true
+	}
+	return b
+}
+
+func (b *SetMap) Clear(c int) {
+	delete(b.hash, c)
+}
+
+func (b *SetMap) Set(c int) {
+	b.hash[c] = true
+}
+
+func (b *SetMap) Count() int {
+	return len(b.hash)
+}
+
+func (b *SetMap) IsSet(c int) bool {
+	_, ok := b.hash[c]
+	return ok
+}
+
+func (b *SetMap) Zero() {
+	b.hash = make(map[int]bool)
+}
+
+func (b *SetMap) Iterate(fn func(int)) {
+	elts := make([]int, 0, b.Count())
+	for c, _ := range b.hash {
+		elts = append(elts, c)
+	}
+	sort.Ints(elts)
+	for _, c := range elts {
+		fn(c)
+	}
 }
