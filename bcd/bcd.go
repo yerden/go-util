@@ -66,6 +66,10 @@ var (
 	ErrBadBCD   = fmt.Errorf("Bad BCD data")
 )
 
+// PlainEncode is a simple but not efficient implementation
+// of BCD encoding. It is preserved for historical and
+// educational purposes. The user might want to use Encoder
+// instead.
 func (enc *BCD) PlainEncode(in, out []byte) ([]byte, error) {
 	if !checkBCD(enc) {
 		panic("BCD table is incorrect")
@@ -112,6 +116,10 @@ func reverse(m map[byte]byte) map[byte]byte {
 	return res
 }
 
+// PlainDecode is a simple but not efficient implementation
+// of BCD decoding. It is preserved for historical and
+// educational purposes. The user might want to use Decoder
+// instead.
 func (enc *BCD) PlainDecode(in, out []byte) ([]byte, error) {
 	if !checkBCD(enc) {
 		panic("BCD table is incorrect")

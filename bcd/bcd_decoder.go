@@ -9,6 +9,8 @@ type word [2]byte
 type dword [4]byte
 type qword [8]byte
 
+// Decoder is used to decode BCD converted bytes into
+// decimal string.
 type Decoder struct {
 	// two nibbles (1 byte) to 2 symbols mapping; example:
 	// 0x45 -> '45' or '54' depending on nibble swapping
@@ -81,6 +83,8 @@ func (dec *Decoder) unpackLastByte(b byte) (byte, error) {
 	return w[0], nil
 }
 
+// NewDecoder creates new Decoder from BCD configuration.
+// If the configuration is invalid NewDecoder will panic.
 func NewDecoder(config *BCD) *Decoder {
 	if !checkBCD(config) {
 		panic("BCD table is incorrect")
@@ -103,6 +107,9 @@ func DecodedLen(x int) int {
 	return 2 * x
 }
 
+// Decode parses BCD encoded bytes from src and tries to
+// decode them to dst. Number of decoded bytes and possible
+// error is returned.
 func (dec *Decoder) Decode(dst, src []byte) (int, error) {
 	dst = dst[:0]
 
