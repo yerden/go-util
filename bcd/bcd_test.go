@@ -2,7 +2,7 @@ package bcd
 
 import (
 	"bytes"
-	// "fmt"
+	"fmt"
 	"testing"
 )
 
@@ -66,6 +66,34 @@ func TestEncodeOpt(t *testing.T) {
 	input = "unacceptable"
 	n, err = enc.Encode(output, []byte(input))
 	assert(err == ErrBadInput)
+}
+
+func ExampleEncoder_Encode() {
+	enc := NewEncoder(TBCDEncoding)
+
+	src := []byte("12345")
+	dst := make([]byte, EncodedLen(len(src)))
+	n, err := enc.Encode(dst, src)
+	if err != nil {
+		return
+	}
+
+	fmt.Println(bytes.Equal(dst[:n], []byte{0x21, 0x43, 0xf5}))
+	// Output: true
+}
+
+func ExampleDecoder_Decode() {
+	dec := NewDecoder(TBCDEncoding)
+
+	src := []byte{0x21, 0x43, 0xf5}
+	dst := make([]byte, DecodedLen(len(src)))
+	n, err := dec.Decode(dst, src)
+	if err != nil {
+		return
+	}
+
+	fmt.Println(string(dst[:n]))
+	// Output: 12345
 }
 
 func TestPlainDecode(t *testing.T) {
