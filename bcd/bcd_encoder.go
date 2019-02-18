@@ -33,8 +33,8 @@ func checkBCD(config *BCD) bool {
 }
 
 func newHashEnc(config *BCD) (res [0x100]byte) {
-	for i := byte(0); i < 0xff; i++ {
-		c, ok := config.Map[i]
+	for i := 0; i < 0x100; i++ {
+		c, ok := config.Map[byte(i)]
 		if !ok {
 			// no matching symbol
 			c = 0xff
