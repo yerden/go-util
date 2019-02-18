@@ -59,6 +59,16 @@ var (
 		},
 		SwapNibble: true,
 		Filler:     0xf}
+
+	// Aiken or 2421 code
+	AikenEncoding = &BCD{
+		Map: map[byte]byte{
+			'0': 0x0, '1': 0x1, '2': 0x2, '3': 0x3,
+			'4': 0x4, '5': 0xb, '6': 0xc, '7': 0xd,
+			'8': 0xe, '9': 0xf,
+		},
+		SwapNibble: false,
+		Filler:     0x5}
 )
 
 var (
