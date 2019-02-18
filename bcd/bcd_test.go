@@ -82,6 +82,20 @@ func ExampleEncoder_Encode() {
 	// Output: true
 }
 
+func ExampleEncoder_Encode_second() {
+	enc := NewEncoder(StdEncoding)
+
+	src := []byte("1234")
+	dst := make([]byte, EncodedLen(len(src)))
+	n, err := enc.Encode(dst, src)
+	if err != nil {
+		return
+	}
+
+	fmt.Println(bytes.Equal(dst[:n], []byte{0x12, 0x34}))
+	// Output: true
+}
+
 func ExampleDecoder_Decode() {
 	dec := NewDecoder(TBCDEncoding)
 
