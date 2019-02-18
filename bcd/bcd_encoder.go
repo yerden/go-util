@@ -1,9 +1,5 @@
 package bcd
 
-import (
-// "io"
-)
-
 // Encoder is used to encode decimal string into
 // BCD bytes.
 type Encoder struct {
@@ -64,22 +60,24 @@ func (enc *Encoder) packNibs(nib1, nib2 byte) byte {
 	}
 }
 
-// encode w[0] and w[1]
-func (enc *Encoder) packWord(w []byte) (byte, error) {
-	nib1, nib2 := enc.hash[w[0]], enc.hash[w[1]]
-	if nib1 > 0xf || nib2 > 0xf {
-		return 0, ErrBadInput
+func (enc *Encoder) pack(w []byte) (n int, b byte, err error) {
+	var nib1, nib2 byte
+	switch len(w) {
+	case 0:
+		n = 0
+		return
+	case 1:
+		n = 1
+		if nib1, nib2 = enc.hash[w[0]], enc.filler; nib1 > 0xf {
+			err = ErrBadInput
+		}
+	default:
+		n = 2
+		if nib1, nib2 = enc.hash[w[0]], enc.hash[w[1]]; nib1 > 0xf || nib2 > 0xf {
+			err = ErrBadInput
+		}
 	}
-	return enc.packNibs(nib1, nib2), nil
-}
-
-// encode w[0] and filler
-func (enc *Encoder) packLastByte(b byte) (byte, error) {
-	nib1, nib2 := enc.hash[b], enc.filler
-	if nib1 > 0xf {
-		return 0, ErrBadInput
-	}
-	return enc.packNibs(nib1, nib2), nil
+	return n, enc.packNibs(nib1, nib2), err
 }
 
 // EncodedLen returns amount of space needed to store
@@ -91,25 +89,21 @@ func EncodedLen(x int) int {
 // Encode get input bytes from src and encodes them into
 // BCD data. Number of encoded bytes and possible
 // error is returned.
-func (enc *Encoder) Encode(dst, src []byte) (int, error) {
-	dst = dst[:0]
-	var err error
+func (enc *Encoder) Encode(dst, src []byte) (n int, err error) {
 	var b byte
+	var wid int
 
-	for {
-		switch len(src) {
-		case 0:
-			return len(dst), nil
-		case 1:
-			b, err = enc.packLastByte(src[0])
-			dst = append(dst, b)
-			return len(dst), err
-		default:
-			if b, err = enc.packWord(src[:2]); err != nil {
-				return 0, err
-			}
-			dst = append(dst, b)
-			src = src[2:]
+	for n < len(dst) {
+		wid, b, err = enc.pack(src)
+		switch {
+		case err != nil:
+			return
+		case wid == 0:
+			return
 		}
+		dst[n] = b
+		n++
+		src = src[wid:]
 	}
+	return
 }

@@ -1,10 +1,5 @@
 package bcd
 
-import (
-	"bytes"
-	"io"
-)
-
 type word [2]byte
 type dword [4]byte
 type qword [8]byte
@@ -12,6 +7,12 @@ type qword [8]byte
 // Decoder is used to decode BCD converted bytes into
 // decimal string.
 type Decoder struct {
+	// if the input contains filler nibble in the
+	// middle, default behaviour is to treat this
+	// as an error. You can tell decoder to resume
+	// decoding quietly in that case by setting this.
+	IgnoreFiller bool
+
 	// two nibbles (1 byte) to 2 symbols mapping; example:
 	// 0x45 -> '45' or '54' depending on nibble swapping
 	// additional 2 bytes of dword should be 0, otherwise
@@ -65,22 +66,14 @@ func newHashDecByte(config *BCD) (res [0x100]word) {
 	return
 }
 
-func (dec *Decoder) unpackWord(b byte) (word, error) {
-	dw := dec.hashWord[b]
-	if dw[2] != 0 {
-		return word{}, ErrBadBCD
+func (dec *Decoder) unpack(w []byte, b byte) (n int, end bool, err error) {
+	if dw := dec.hashWord[b]; dw[2] == 0 {
+		return copy(w, dw[:2]), false, nil
 	}
-
-	return word{dw[0], dw[1]}, nil
-}
-
-func (dec *Decoder) unpackLastByte(b byte) (byte, error) {
-	w := dec.hashByte[b]
-	if w[1] != 0 {
-		return 0, ErrBadBCD
+	if dw := dec.hashByte[b]; dw[1] == 0 {
+		return copy(w, dw[:1]), true, nil
 	}
-
-	return w[0], nil
+	return 0, false, ErrBadBCD
 }
 
 // NewDecoder creates new Decoder from BCD configuration.
@@ -110,39 +103,32 @@ func DecodedLen(x int) int {
 // Decode parses BCD encoded bytes from src and tries to
 // decode them to dst. Number of decoded bytes and possible
 // error is returned.
-func (dec *Decoder) Decode(dst, src []byte) (int, error) {
-	dst = dst[:0]
-
+func (dec *Decoder) Decode(dst, src []byte) (n int, err error) {
 	if len(src) == 0 {
 		return 0, nil
 	}
 
 	for _, c := range src[:len(src)-1] {
-		w, err := dec.unpackWord(c)
-		if err != nil {
-			return 0, ErrBadBCD
+		wid, end, err := dec.unpack(dst[n:], c)
+		switch {
+		case err != nil: // invalid input
+			return n, err
+		case wid == 0: // no place in dst
+			return n, nil
+		case end && !dec.IgnoreFiller: // unexpected filler
+			return n, ErrBadBCD
 		}
-		dst = append(dst, w[:]...)
+		n += wid
 	}
 
 	c := src[len(src)-1]
-	w, err := dec.unpackWord(c)
-	if err != nil {
-		// unable to unpack a word
-		// maybe it's a finishing byte
-		b, err := dec.unpackLastByte(c)
-		if err != nil {
-			return 0, ErrBadBCD
-		}
-		dst = append(dst, b)
-	} else {
-		dst = append(dst, w[:]...)
+	wid, _, err := dec.unpack(dst[n:], c)
+	switch {
+	case err != nil: // invalid input
+		return n, err
+	case wid == 0: // no place in dst
+		return n, nil
 	}
-	return len(dst), nil
-}
-
-type Reader struct {
-	*Decoder
-	src io.Reader
-	buf *bytes.Buffer
+	n += wid
+	return n, nil
 }
