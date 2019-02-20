@@ -94,6 +94,15 @@ func TestSetMarshal(t *testing.T) {
 	}
 }
 
+func TestMarshalHexZero(t *testing.T) {
+	assert := newAssert(t, false)
+	b := NewSetInt()
+	b.Zero()
+	hex, err := MarshalHex(b)
+	assert(err == nil)
+	assert(string(hex) == "0")
+}
+
 func ExampleUnmarshalHex() {
 	var b SetInt
 	s := "1f" // 0, 1, 2, 3, 4
@@ -134,7 +143,7 @@ func ExampleSet_Merge() {
 	a := NewSetInt(0, 1)
 	b := NewSetInt(1, 2)
 
-	a.Merge(b)
+	Merge(a, b)
 
 	var list []int
 	a.Iterate(func(c int) {
@@ -149,7 +158,7 @@ func ExampleSet_Cut() {
 	a := NewSetInt(0, 1)
 	b := NewSetInt(1, 2)
 
-	a.Cut(b)
+	Cut(a, b)
 
 	var list []int
 	a.Iterate(func(c int) {
