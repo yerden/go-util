@@ -6,12 +6,12 @@ import (
 	"io"
 )
 
-// Reader reads encoded BCD data from underlying io.Reader
-// and decodes them. Please pay attention that due to
-// ambiguity of encoding process (encoded octet may indicate
-// the end of data by using the filler nibble) the last
-// input octet is not decoded until the next input octet is
-// observed or until underlying io.Reader returns error.
+// Reader reads encoded BCD data from underlying io.Reader and decodes
+// them. Please pay attention that due to ambiguity of encoding
+// process (encoded octet may indicate the end of data by using the
+// filler nibble) the last input octet is not decoded until the next
+// input octet is observed or until underlying io.Reader returns
+// error.
 type Reader struct {
 	*Decoder
 	src io.Reader

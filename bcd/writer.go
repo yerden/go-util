@@ -65,11 +65,10 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 	return
 }
 
-// Encodes all backlogged data to underlying Writer.
-// If number of bytes is odd, the padding fillers will
-// be applied. Because of this the main usage of Flush
-// is right before stopping Write()-ing data to
-// properly finalize the encoding process.
+// Encodes all backlogged data to underlying Writer.  If number of
+// bytes is odd, the padding fillers will be applied. Because of this
+// the main usage of Flush is right before stopping Write()-ing data
+// to properly finalize the encoding process.
 func (w *Writer) Flush() error {
 	if len(w.word) == 0 {
 		return nil
@@ -87,8 +86,8 @@ func (w *Writer) Flush() error {
 	return err
 }
 
-// Buffered returns the number of bytes stored
-// in backlog awaiting for its pair.
+// Buffered returns the number of bytes stored in backlog awaiting for
+// its pair.
 func (w *Writer) Buffered() int {
 	return len(w.word)
 }

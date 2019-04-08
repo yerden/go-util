@@ -8,8 +8,7 @@ import (
 	"fmt"
 )
 
-// BCD is the configuration for Binary-Coded Decimal
-// encoding.
+// BCD is the configuration for Binary-Coded Decimal encoding.
 type BCD struct {
 	// Map of symbols to encode and decode routines.
 	// Example:
@@ -71,7 +70,10 @@ var (
 		Filler:      0x5}
 )
 
+// Error values returned by API.
 var (
+	// ErrBadInput returned if input data cannot be encoded.
 	ErrBadInput = fmt.Errorf("non-encodable data")
-	ErrBadBCD   = fmt.Errorf("Bad BCD data")
+	// ErrBadBCD returned if input data cannot be decoded.
+	ErrBadBCD = fmt.Errorf("Bad BCD data")
 )

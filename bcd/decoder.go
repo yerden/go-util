@@ -4,26 +4,24 @@ type word [2]byte
 type dword [4]byte
 type qword [8]byte
 
-// Decoder is used to decode BCD converted bytes into
-// decimal string.
+// Decoder is used to decode BCD converted bytes into decimal string.
+//
+// Decoder may be copied with no side effects.
 type Decoder struct {
-	// if the input contains filler nibble in the
-	// middle, default behaviour is to treat this
-	// as an error. You can tell decoder to resume
-	// decoding quietly in that case by setting this.
+	// if the input contains filler nibble in the middle, default
+	// behaviour is to treat this as an error. You can tell decoder to
+	// resume decoding quietly in that case by setting this.
 	IgnoreFiller bool
 
-	// two nibbles (1 byte) to 2 symbols mapping; example:
-	// 0x45 -> '45' or '54' depending on nibble swapping
-	// additional 2 bytes of dword should be 0, otherwise
-	// given byte is unacceptable
+	// two nibbles (1 byte) to 2 symbols mapping; example: 0x45 ->
+	// '45' or '54' depending on nibble swapping additional 2 bytes of
+	// dword should be 0, otherwise given byte is unacceptable
 	hashWord [0x100]dword
 
-	// one finishing byte with filler nibble
-	// to 1 symbol mapping; example:
-	// 0x4f -> '4' (filler=0xf, swap=false)
-	// additional byte of word should 0, otherise
-	// given nibble is unacceptable
+	// one finishing byte with filler nibble to 1 symbol mapping;
+	// example: 0x4f -> '4' (filler=0xf, swap=false)
+	// additional byte of word should 0, otherise given nibble is
+	// unacceptable
 	hashByte [0x100]word
 }
 
@@ -76,8 +74,8 @@ func (dec *Decoder) unpack(w []byte, b byte) (n int, end bool, err error) {
 	return 0, false, ErrBadBCD
 }
 
-// NewDecoder creates new Decoder from BCD configuration.
-// If the configuration is invalid NewDecoder will panic.
+// NewDecoder creates new Decoder from BCD configuration. If the
+// configuration is invalid NewDecoder will panic.
 func NewDecoder(config *BCD) *Decoder {
 	if !checkBCD(config) {
 		panic("BCD table is incorrect")
@@ -88,21 +86,18 @@ func NewDecoder(config *BCD) *Decoder {
 		hashByte: newHashDecByte(config)}
 }
 
-// DecodedLen tells how much space is needed to
-// store decoded string. Please note that it returns
-// the max amount of possibly needed space because
-// last octet may contain only one encoded digit.
-// In that case the decoded length will be less by 1.
-// For example, 4 octets may encode 7 or 8 digits.
-// Please examine the result of Decode to obtain
-// the real value.
+// DecodedLen tells how much space is needed to store decoded string.
+// Please note that it returns the max amount of possibly needed space
+// because last octet may contain only one encoded digit. In that
+// case the decoded length will be less by 1. For example, 4 octets
+// may encode 7 or 8 digits.  Please examine the result of Decode to
+// obtain the real value.
 func DecodedLen(x int) int {
 	return 2 * x
 }
 
-// Decode parses BCD encoded bytes from src and tries to
-// decode them to dst. Number of decoded bytes and possible
-// error is returned.
+// Decode parses BCD encoded bytes from src and tries to decode them
+// to dst. Number of decoded bytes and possible error is returned.
 func (dec *Decoder) Decode(dst, src []byte) (n int, err error) {
 	if len(src) == 0 {
 		return 0, nil

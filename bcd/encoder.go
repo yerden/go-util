@@ -1,7 +1,8 @@
 package bcd
 
-// Encoder is used to encode decimal string into
-// BCD bytes.
+// Encoder is used to encode decimal string into BCD bytes.
+//
+// Encoder may be copied with no side effects.
 type Encoder struct {
 	// symbol to nibble mapping; example:
 	// '*' -> 0xA
@@ -40,8 +41,8 @@ func newHashEnc(config *BCD) (res [0x100]byte) {
 	return
 }
 
-// NewEncoder creates new Encoder from BCD configuration.
-// If the configuration is invalid NewEncoder will panic.
+// NewEncoder creates new Encoder from BCD configuration.  If the
+// configuration is invalid NewEncoder will panic.
 func NewEncoder(config *BCD) *Encoder {
 	if !checkBCD(config) {
 		panic("BCD table is incorrect")
@@ -80,15 +81,14 @@ func (enc *Encoder) pack(w []byte) (n int, b byte, err error) {
 	return n, enc.packNibs(nib1, nib2), err
 }
 
-// EncodedLen returns amount of space needed to store
-// bytes after encoding data of length x.
+// EncodedLen returns amount of space needed to store bytes after
+// encoding data of length x.
 func EncodedLen(x int) int {
 	return (x + 1) / 2
 }
 
-// Encode get input bytes from src and encodes them into
-// BCD data. Number of encoded bytes and possible
-// error is returned.
+// Encode get input bytes from src and encodes them into BCD data.
+// Number of encoded bytes and possible error is returned.
 func (enc *Encoder) Encode(dst, src []byte) (n int, err error) {
 	var b byte
 	var wid int
