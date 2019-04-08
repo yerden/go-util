@@ -38,7 +38,7 @@ func newHashDecWord(config *BCD) (res [0x100]dword) {
 	for c1, nib1 := range config.Map {
 		for c2, nib2 := range config.Map {
 			b = (nib1 << 4) + nib2&0xf
-			if config.SwapNibble {
+			if config.SwapNibbles {
 				w = dword{c2, c1, 0, 0}
 			} else {
 				w = dword{c1, c2, 0, 0}
@@ -56,7 +56,7 @@ func newHashDecByte(config *BCD) (res [0x100]word) {
 		res[i] = word{0xff, 0xff}
 	}
 	for c, nib := range config.Map {
-		if config.SwapNibble {
+		if config.SwapNibbles {
 			b = (config.Filler << 4) + nib&0xf
 		} else {
 			b = (nib << 4) + config.Filler&0xf

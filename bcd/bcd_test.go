@@ -28,8 +28,8 @@ var (
 			'8': 0x8, '9': 0x9, '*': 0xa, '#': 0xb,
 			'a': 0xc, 'b': 0xd, 'c': 0xe,
 		},
-		SwapNibble: true,
-		Filler:     0xf}
+		SwapNibbles: true,
+		Filler:      0xf}
 )
 
 func TestPlainEncode(t *testing.T) {
@@ -73,7 +73,7 @@ func TestEncodeOpt(t *testing.T) {
 }
 
 func ExampleEncoder_Encode() {
-	enc := NewEncoder(TBCDEncoding)
+	enc := NewEncoder(Telephony)
 
 	src := []byte("12345")
 	dst := make([]byte, EncodedLen(len(src)))
@@ -87,7 +87,7 @@ func ExampleEncoder_Encode() {
 }
 
 func ExampleEncoder_Encode_second() {
-	enc := NewEncoder(StdEncoding)
+	enc := NewEncoder(Standard)
 
 	src := []byte("1234")
 	dst := make([]byte, EncodedLen(len(src)))
@@ -101,7 +101,7 @@ func ExampleEncoder_Encode_second() {
 }
 
 func ExampleDecoder_Decode() {
-	dec := NewDecoder(TBCDEncoding)
+	dec := NewDecoder(Telephony)
 
 	src := []byte{0x21, 0x43, 0xf5}
 	dst := make([]byte, DecodedLen(len(src)))
@@ -267,8 +267,8 @@ func TestReaderWriter(t *testing.T) {
 
 	src := bytes.NewBufferString(s)
 	dst := new(bytes.Buffer)
-	enc := NewEncoder(AikenEncoding).NewWriter(dst)
-	dec := NewDecoder(AikenEncoding).NewReader(dst)
+	enc := NewEncoder(Aiken).NewWriter(dst)
+	dec := NewDecoder(Aiken).NewReader(dst)
 
 	_, err := io.Copy(enc, src)
 	assert(enc.Buffered() == 1)

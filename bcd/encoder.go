@@ -49,7 +49,7 @@ func NewEncoder(config *BCD) *Encoder {
 	return &Encoder{
 		hash:   newHashEnc(config),
 		filler: config.Filler,
-		swap:   config.SwapNibble}
+		swap:   config.SwapNibbles}
 }
 
 func (enc *Encoder) packNibs(nib1, nib2 byte) byte {
