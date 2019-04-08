@@ -32,24 +32,6 @@ var (
 		Filler:      0xf}
 )
 
-func TestPlainEncode(t *testing.T) {
-	assert := newAssert(t, false)
-
-	input := "12345"
-	output, err := enc.PlainEncode([]byte(input), []byte{})
-	assert(err == nil)
-	assert(bytes.Equal(output, []byte{0x21, 0x43, 0xf5}))
-
-	input = "abc"
-	output, err = enc.PlainEncode([]byte(input), []byte{})
-	assert(err == nil)
-	assert(bytes.Equal(output, []byte{0xdc, 0xfe}))
-
-	input = "unacceptable"
-	output, err = enc.PlainEncode([]byte(input), []byte{})
-	assert(err == ErrBadInput)
-}
-
 func TestEncodeOpt(t *testing.T) {
 	assert := newAssert(t, false)
 	enc := NewEncoder(enc)
@@ -112,34 +94,6 @@ func ExampleDecoder_Decode() {
 
 	fmt.Println(string(dst[:n]))
 	// Output: 12345
-}
-
-func TestPlainDecode(t *testing.T) {
-	assert := newAssert(t, true)
-
-	input := []byte{0x21, 0x43, 0xf5}
-	output, err := enc.PlainDecode(input, []byte{})
-	assert(err == nil)
-	assert(string(output) == "12345")
-
-	input = []byte{0x21, 0x43}
-	output, err = enc.PlainDecode(input, []byte{})
-	assert(err == nil)
-	assert(string(output) == "1234")
-
-	input = []byte{0x21, 0xf3}
-	output, err = enc.PlainDecode(input, []byte{})
-	assert(err == nil)
-	assert(string(output) == "123")
-
-	input = []byte{0xdc, 0xfe}
-	output, err = enc.PlainDecode(input, []byte{})
-	assert(err == nil)
-	assert(string(output) == "abc")
-
-	input = []byte{0xff, 0xff}
-	output, err = enc.PlainDecode(input, []byte{})
-	assert(err == ErrBadBCD)
 }
 
 func TestDecodeOpt(t *testing.T) {
@@ -281,28 +235,12 @@ func TestReaderWriter(t *testing.T) {
 	assert(src.String() == s)
 }
 
-func BenchmarkPlainEncode(b *testing.B) {
-	out := make([]byte, 0, 24)
-
-	for i := 0; i < b.N; i++ {
-		enc.PlainEncode([]byte("123456789"), out)
-	}
-}
-
 func BenchmarkEncodeOpt(b *testing.B) {
 	out := make([]byte, 0, 24)
 	enc := NewEncoder(enc)
 
 	for i := 0; i < b.N; i++ {
 		enc.Encode(out, []byte("123456789"))
-	}
-}
-
-func BenchmarkPlainDecode(b *testing.B) {
-	out := make([]byte, 0, 24)
-
-	for i := 0; i < b.N; i++ {
-		enc.PlainDecode([]byte{0x21, 0x43, 0x65, 0x87}, out)
 	}
 }
 
