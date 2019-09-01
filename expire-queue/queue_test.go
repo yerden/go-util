@@ -49,7 +49,7 @@ func TestSet(t *testing.T) {
 func BenchmarkSetNow(b *testing.B) {
 	// assert := Assert(b, true)
 
-	q := New(time.Microsecond, 0)
+	q := New(time.Second, 0)
 
 	for i := 0; i < b.N; i++ {
 		q.Set(i, i+1)
@@ -59,7 +59,7 @@ func BenchmarkSetNow(b *testing.B) {
 func BenchmarkSet1ms(b *testing.B) {
 	// assert := Assert(b, true)
 
-	q := New(time.Microsecond, time.Millisecond)
+	q := New(time.Second, time.Millisecond)
 
 	for i := 0; i < b.N; i++ {
 		q.Set(i, i+1)
