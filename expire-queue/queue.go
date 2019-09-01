@@ -9,33 +9,37 @@ type ExpireQueue struct {
 	ttl  time.Duration
 	elts map[interface{}]*list.Element
 	row  *list.List
+	ts   *TimeSource
 }
 
-func New(ttl time.Duration) *ExpireQueue {
+func New(ttl, res time.Duration) *ExpireQueue {
 	return &ExpireQueue{
 		ttl:  ttl,
 		elts: make(map[interface{}]*list.Element),
-		row:  list.New()}
+		row:  list.New(),
+		ts:   NewTimeSource(res)}
 }
 
 type box struct {
-	updated time.Time
+	updated int64
 	k, v    interface{}
 }
 
 // return true if given element is expired and should be expunged.
-func (q *ExpireQueue) isExpired(now time.Time, e *list.Element) bool {
+func (q *ExpireQueue) isExpired(nano int64, e *list.Element) bool {
 	b := e.Value.(box)
-	return now.After(b.updated.Add(q.ttl))
+	now := time.Unix(0, nano)
+	future := time.Unix(0, b.updated).Add(q.ttl)
+	return now.After(future)
 }
 
 // return back element and true if the element is expired and should
 // be expunged.
-func (q *ExpireQueue) isPop(now time.Time) (*list.Element, bool) {
+func (q *ExpireQueue) isPop(nano int64) (*list.Element, bool) {
 	e := q.row.Back()
 	ok := e != nil
 	if ok {
-		ok = q.isExpired(now, e)
+		ok = q.isExpired(nano, e)
 	}
 	return e, ok
 }
@@ -45,11 +49,11 @@ func (q *ExpireQueue) isPop(now time.Time) (*list.Element, bool) {
 // expired. All found expired elements removed from the 'elts' map.
 // All found expired elements are also removed from the row except
 // last expired one which is also returned.
-func (q *ExpireQueue) popN(now time.Time, n int) (*list.Element, bool) {
+func (q *ExpireQueue) popN(nano int64, n int) (*list.Element, bool) {
 	var e, elt *list.Element
 	var ok bool
 	for i := 0; i < n; i++ {
-		if elt, ok = q.isPop(now); !ok {
+		if elt, ok = q.isPop(nano); !ok {
 			break
 		}
 
@@ -65,8 +69,8 @@ func (q *ExpireQueue) popN(now time.Time, n int) (*list.Element, bool) {
 }
 
 func (q *ExpireQueue) Set(k, v interface{}) {
-	now := time.Now()
-	b := box{updated: now, k: k, v: v}
+	nano := q.ts.UnixNano()
+	b := box{updated: nano, k: k, v: v}
 
 	// try find it
 	if e, ok := q.elts[k]; ok {
@@ -83,11 +87,10 @@ func (q *ExpireQueue) Set(k, v interface{}) {
 	}
 
 	// maybe we can reuse some dead's clothes
-	if e, ok := q.popN(now, 1); ok {
+	if e, ok := q.popN(nano, 1); ok {
 		// update value in existing element
 		e.Value = b
 		q.row.MoveToFront(e)
-
 		// and set new element in the map
 		q.elts[k] = e
 		return
@@ -98,13 +101,13 @@ func (q *ExpireQueue) Set(k, v interface{}) {
 }
 
 func (q *ExpireQueue) Get(k interface{}) (interface{}, bool) {
-	now := time.Now()
+	nano := q.ts.UnixNano()
 	e, ok := q.elts[k]
 	if !ok {
 		return nil, false
 	}
 
-	if q.isExpired(now, e) {
+	if q.isExpired(nano, e) {
 		b := q.row.Remove(e).(box)
 		delete(q.elts, b.k)
 		return nil, false
@@ -114,7 +117,7 @@ func (q *ExpireQueue) Get(k interface{}) (interface{}, bool) {
 }
 
 func (q *ExpireQueue) CleanN(n int) {
-	if e, ok := q.popN(time.Now(), n); ok {
+	if e, ok := q.popN(q.ts.UnixNano(), n); ok {
 		q.row.Remove(e)
 	}
 }
