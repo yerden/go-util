@@ -19,7 +19,7 @@ func Assert(t testing.TB, fail bool) func(bool, ...interface{}) {
 func TestSet(t *testing.T) {
 	assert := Assert(t, true)
 
-	q := New(time.Second)
+	q := New(time.Second, 0)
 	assert(q != nil)
 
 	q.Set(1, 2)
@@ -46,10 +46,20 @@ func TestSet(t *testing.T) {
 	assert(!ok)
 }
 
-func BenchmarkSet(b *testing.B) {
+func BenchmarkSetNow(b *testing.B) {
 	// assert := Assert(b, true)
 
-	q := New(time.Microsecond)
+	q := New(time.Microsecond, 0)
+
+	for i := 0; i < b.N; i++ {
+		q.Set(i, i+1)
+	}
+}
+
+func BenchmarkSet1ms(b *testing.B) {
+	// assert := Assert(b, true)
+
+	q := New(time.Microsecond, time.Millisecond)
 
 	for i := 0; i < b.N; i++ {
 		q.Set(i, i+1)
