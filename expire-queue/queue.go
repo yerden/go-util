@@ -23,6 +23,11 @@ type box struct {
 	k, v    interface{}
 }
 
+// SetTTL specifies new TTL for entries.
+func (q *ExpireQueue) SetTTL(ttl time.Duration) {
+	q.ttl = ttl
+}
+
 // return true if given element is expired and should be expunged.
 func (q *ExpireQueue) isExpired(now time.Time, e *list.Element) bool {
 	b := e.Value.(box)
