@@ -5,17 +5,58 @@ import (
 	"time"
 )
 
+// Config describes various settings of the ExpireQueue.
+type Config struct {
+	// TTL specifies the TTL of an item in the queue. While performing
+	// Set operation the TTL will be checked for items in the bottom
+	// of the queue. CleanN operation also relies on this setting. If
+	// zero, no limit will be imposed on the queue.
+	TTL time.Duration
+
+	// MaxItems specifies max number of keys to store in the queue. If
+	// there is more than MaxItems in a queue, Set operation will
+	// expire the item in the bottom of the queue. If zero, no limit
+	// will be imposed on the queue. CleanN also respects this
+	// setting.
+	MaxItems int
+
+	// BackScan specifies maximum items will be scanned from bottom
+	// to the top until non-expiring item will be met. All items found
+	// are to be removed as expired on Set operation. Zero value is
+	// the same as 1.
+	BackScan int
+}
+
+// ExpireQueue implements basic Get/Set map operations in a form of a
+// priority queue.
 type ExpireQueue struct {
+	max  int // MaxItems
+	bs   int // back scan
 	ttl  time.Duration
 	elts map[interface{}]*list.Element
 	row  *list.List
 }
 
-func New(ttl time.Duration) *ExpireQueue {
+func max(x, y int) int {
+	if x > y {
+		return x
+	}
+	return y
+}
+
+func NewWithOpts(c *Config) *ExpireQueue {
 	return &ExpireQueue{
-		ttl:  ttl,
+		max:  c.MaxItems,
+		ttl:  c.TTL,
+		bs:   max(c.BackScan, 1),
 		elts: make(map[interface{}]*list.Element),
 		row:  list.New()}
+}
+
+// New is a shortcut for NewWithOpts with BackScan set to 1 and
+// MaxItems set to 0.
+func New(ttl time.Duration) *ExpireQueue {
+	return NewWithOpts(&Config{TTL: ttl})
 }
 
 type box struct {
@@ -30,8 +71,19 @@ func (q *ExpireQueue) SetTTL(ttl time.Duration) {
 
 // return true if given element is expired and should be expunged.
 func (q *ExpireQueue) isExpired(now time.Time, e *list.Element) bool {
-	b := e.Value.(box)
-	return now.After(b.updated.Add(q.ttl))
+	if q.max > 0 && e.Next() == nil && len(q.elts) > q.max {
+		// we're at the bottom, and there's a limit on maximum number
+		// of items and we hit the limit.
+		return true
+	}
+
+	if q.ttl != 0 {
+		// there's a time limit and we check it.
+		b := e.Value.(box)
+		return now.After(b.updated.Add(q.ttl))
+	}
+
+	return false
 }
 
 // return back element and true if the element is expired and should
@@ -88,7 +140,7 @@ func (q *ExpireQueue) Set(k, v interface{}) {
 	}
 
 	// maybe we can reuse some dead's clothes
-	if e, ok := q.popN(now, 1); ok {
+	if e, ok := q.popN(now, q.bs); ok {
 		// update value in existing element
 		e.Value = b
 		q.row.MoveToFront(e)
