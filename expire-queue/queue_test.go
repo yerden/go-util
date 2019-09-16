@@ -16,7 +16,7 @@ func Assert(t testing.TB, fail bool) func(bool, ...interface{}) {
 	}
 }
 
-func TestSet(t *testing.T) {
+func TestSetTTL(t *testing.T) {
 	assert := Assert(t, true)
 
 	q := New(time.Second)
@@ -43,6 +43,28 @@ func TestSet(t *testing.T) {
 	v, ok = q.Get(1)
 	assert(!ok)
 	v, ok = q.Get(2)
+	assert(!ok)
+}
+
+func TestSetMaxItems(t *testing.T) {
+	assert := Assert(t, true)
+
+	max := 100
+	c := &Config{MaxItems: max}
+	q := NewWithOpts(c)
+	assert(q != nil)
+
+	for n := 0; n < max; n++ {
+		q.Set(n, n)
+	}
+
+	for n := 0; n < max; n++ {
+		_, ok := q.Get(n)
+		assert(ok)
+	}
+
+	q.Set(max, max)
+	_, ok := q.Get(0)
 	assert(!ok)
 }
 
