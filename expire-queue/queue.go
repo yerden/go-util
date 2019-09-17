@@ -121,6 +121,19 @@ func (q *ExpireQueue) popN(now time.Time, n int) (*list.Element, bool) {
 	return e, e != nil
 }
 
+// Flags for SmartSet. The default behaviour is identical to Set.
+const (
+	// Replace key's value with a new one, but don't update its
+	// timestamp.
+	Replace uint = 1 << iota
+
+	// Update key's timestamp with no change to value.
+	Revive
+
+	// Delete key if specified value is nil.
+	DeleteOnNil
+)
+
 func (q *ExpireQueue) Set(k, v interface{}) {
 	now := time.Now()
 	b := box{updated: now, k: k, v: v}
@@ -154,6 +167,10 @@ func (q *ExpireQueue) Set(k, v interface{}) {
 	q.elts[k] = q.row.PushFront(b)
 }
 
+func (q *ExpireQueue) SmartSet(k, v interface{}, flags uint) {
+
+}
+
 func (q *ExpireQueue) Get(k interface{}) (interface{}, bool) {
 	now := time.Now()
 	e, ok := q.elts[k]
@@ -168,6 +185,13 @@ func (q *ExpireQueue) Get(k interface{}) (interface{}, bool) {
 	}
 
 	return e.Value.(box).v, true
+}
+
+func (q *ExpireQueue) Delete(k interface{}) {
+	if e, ok := q.elts[k]; ok {
+		delete(q.elts, k)
+		q.row.Remove(e)
+	}
 }
 
 func (q *ExpireQueue) CleanN(n int) {
