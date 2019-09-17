@@ -63,9 +63,10 @@ func TestSetMaxItems(t *testing.T) {
 		assert(ok)
 	}
 
+	assert(q.Count() == max, q.Count())
 	q.Set(max, max)
 	_, ok := q.Get(0)
-	assert(!ok)
+	assert(!ok, q.Count())
 }
 
 func BenchmarkSet(b *testing.B) {
