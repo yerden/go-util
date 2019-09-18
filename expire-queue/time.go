@@ -56,7 +56,7 @@ type TimeDeferSource struct {
 }
 
 func (ts *TimeDeferSource) Now() time.Time {
-	if ts.i%ts.N == 0 {
+	if ts.i++; ts.i%ts.N == 0 {
 		ts.i = 0
 		ts.t = time.Now()
 	}
