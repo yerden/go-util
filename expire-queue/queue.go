@@ -44,6 +44,8 @@ func max(x, y int) int {
 	return y
 }
 
+// NewWithOpts return new instance of ExpireQueue with specified
+// options.
 func NewWithOpts(c *Config) *ExpireQueue {
 	return &ExpireQueue{
 		max:  c.MaxItems,
@@ -121,28 +123,37 @@ func (q *ExpireQueue) popN(now time.Time, n int) (*list.Element, bool) {
 	return e, e != nil
 }
 
-// Flags for SmartSet. The default behaviour is identical to Set.
+// Flags to use in SmartSet which define the behaviour in case key is
+// already in a queue. No flags mean no action.
 const (
-	// Replace key's value with a new one, but don't update its
-	// timestamp.
+	// If key is already present, replace key's value with a new one.
 	Replace uint = 1 << iota
 
-	// Update key's timestamp with no change to value.
+	// If key is already present, update key's timestamp and
+	// move it to the top of the queue. Value is not changed.
 	Revive
-
-	// Delete key if specified value is nil.
-	DeleteOnNil
 )
 
-func (q *ExpireQueue) Set(k, v interface{}) {
-	now := time.Now()
-	b := box{updated: now, k: k, v: v}
-
+// SmartSet sets new k/v. flags defines what to do if the key is
+// present in the map.
+func (q *ExpireQueue) SmartSet(k, v interface{}, flags uint) {
 	// try find it
 	if e, ok := q.elts[k]; ok {
+		if flags == 0 {
+			return
+		}
 		// update value in existing element
+		b := e.Value.(box)
+		{
+			if (flags & Replace) != 0 {
+				b.v = v
+			}
+			if (flags & Revive) != 0 {
+				b.updated = time.Now()
+				q.row.MoveToFront(e)
+			}
+		}
 		e.Value = b
-		q.row.MoveToFront(e)
 
 		// we could check for expiring values in the back but we
 		// choose to do that on insertion because we'd like to relieve
@@ -152,6 +163,8 @@ func (q *ExpireQueue) Set(k, v interface{}) {
 		return
 	}
 
+	now := time.Now()
+	b := box{k: k, v: v, updated: now}
 	// maybe we can reuse some dead's clothes
 	if e, ok := q.popN(now, q.bs); ok {
 		// update value in existing element
@@ -167,10 +180,12 @@ func (q *ExpireQueue) Set(k, v interface{}) {
 	q.elts[k] = q.row.PushFront(b)
 }
 
-func (q *ExpireQueue) SmartSet(k, v interface{}, flags uint) {
-
+// Set sets key and value in a queue.
+func (q *ExpireQueue) Set(k, v interface{}) {
+	q.SmartSet(k, v, Replace|Revive)
 }
 
+// Get retrives value by key.
 func (q *ExpireQueue) Get(k interface{}) (interface{}, bool) {
 	now := time.Now()
 	e, ok := q.elts[k]
@@ -187,6 +202,7 @@ func (q *ExpireQueue) Get(k interface{}) (interface{}, bool) {
 	return e.Value.(box).v, true
 }
 
+// Delete removes key and value.
 func (q *ExpireQueue) Delete(k interface{}) {
 	if e, ok := q.elts[k]; ok {
 		delete(q.elts, k)
@@ -194,12 +210,14 @@ func (q *ExpireQueue) Delete(k interface{}) {
 	}
 }
 
+// CleanN tries to pop up to n tail elements if they're expired.
 func (q *ExpireQueue) CleanN(n int) {
 	if e, ok := q.popN(time.Now(), n); ok {
 		q.row.Remove(e)
 	}
 }
 
+// Count returns number of elements in the queue.
 func (q *ExpireQueue) Count() int {
 	return len(q.elts)
 }
