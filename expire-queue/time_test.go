@@ -6,7 +6,7 @@ import (
 )
 
 func benchmarkTime(b *testing.B, res time.Duration) {
-	ts := NewTimeSource(res)
+	ts := NewTimeChanSource(res)
 
 	for i := 0; i < b.N; i++ {
 		ts.Now()
