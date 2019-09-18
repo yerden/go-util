@@ -6,14 +6,18 @@ import (
 	"time"
 )
 
-type TimeSource struct {
+type TimeSource interface {
+	Now() time.Time
+}
+
+type TimeChanSource struct {
 	res  time.Duration
 	nsec int64
 	done chan bool
 }
 
-func NewTimeSource(res time.Duration) *TimeSource {
-	ts := &TimeSource{}
+func NewTimeChanSource(res time.Duration) *TimeChanSource {
+	ts := &TimeChanSource{}
 	if res == 0 {
 		return ts
 	}
@@ -34,11 +38,11 @@ func NewTimeSource(res time.Duration) *TimeSource {
 		}
 	}()
 
-	runtime.SetFinalizer(ts, func(ts *TimeSource) { close(ts.done) })
+	runtime.SetFinalizer(ts, func(ts *TimeChanSource) { close(ts.done) })
 	return ts
 }
 
-func (ts *TimeSource) Now() time.Time {
+func (ts *TimeChanSource) Now() time.Time {
 	if ts.res == 0 {
 		return time.Now()
 	}
@@ -46,10 +50,15 @@ func (ts *TimeSource) Now() time.Time {
 	return time.Unix(0, atomic.LoadInt64(&ts.nsec))
 }
 
-func (ts *TimeSource) UnixNano() int64 {
-	if ts.res == 0 {
-		return time.Now().UnixNano()
-	}
+type TimeDeferSource struct {
+	N, i int
+	t    time.Time
+}
 
-	return atomic.LoadInt64(&ts.nsec)
+func (ts *TimeDeferSource) Now() time.Time {
+	if ts.i%ts.N == 0 {
+		ts.i = 0
+		ts.t = time.Now()
+	}
+	return ts.t
 }
