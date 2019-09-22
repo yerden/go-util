@@ -56,9 +56,15 @@ type TimeDeferSource struct {
 }
 
 func (ts *TimeDeferSource) Now() time.Time {
-	if ts.i++; ts.i%ts.N == 0 {
-		ts.i = 0
-		ts.t = time.Now()
+	if ts.i%ts.N == 0 {
+		ts.i, ts.t = 0, time.Now()
 	}
+	ts.i++
 	return ts.t
+}
+
+type TimeNativeSource struct{}
+
+func (ts *TimeNativeSource) Now() time.Time {
+	return time.Now()
 }
