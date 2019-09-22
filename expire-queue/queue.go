@@ -182,38 +182,46 @@ func (q *ExpireQueue) SmartSet(k, v interface{}, flags uint) {
 
 // Set sets key and value in a queue.
 func (q *ExpireQueue) Set(k, v interface{}) {
-	q.SmartSet(k, v, Replace|Revive)
+	c := q.Back()
+	now := time.Now()
+	if c.IsNil() || (!q.IsFull() && !c.IsExpired(now)) {
+		q.Push(k, v, now, nil)
+	} else {
+		q.Push(k, v, now, &c)
+	}
 }
 
 // Get retrives value by key.
 func (q *ExpireQueue) Get(k interface{}) (interface{}, bool) {
-	now := time.Now()
-	e, ok := q.elts[k]
-	if !ok {
+	c := q.NewCursor(k)
+	if c.IsNil() {
 		return nil, false
 	}
 
-	if q.isExpired(now, e) {
-		b := q.row.Remove(e).(box)
-		delete(q.elts, b.k)
+	if c.IsExpired(time.Now()) {
+		c.Delete()
 		return nil, false
 	}
-
-	return e.Value.(box).v, true
+	_, v := c.KeyValue()
+	return v, true
 }
 
 // Delete removes key and value.
 func (q *ExpireQueue) Delete(k interface{}) {
-	if e, ok := q.elts[k]; ok {
-		delete(q.elts, k)
-		q.row.Remove(e)
+	if c := q.NewCursor(k); !c.IsNil() {
+		c.Delete()
 	}
 }
 
 // CleanN tries to pop up to n tail elements if they're expired.
 func (q *ExpireQueue) CleanN(n int) {
-	if e, ok := q.popN(time.Now(), n); ok {
-		q.row.Remove(e)
+	c := q.Back()
+	now := time.Now()
+	for i := 0; i < n; i++ {
+		if c.IsNil() || !c.IsExpired(now) {
+			return
+		}
+		c.Delete()
 	}
 }
 
