@@ -113,3 +113,12 @@ func (c *Cursor) MoveToFront(t time.Time) Cursor {
 func (q *ExpireQueue) IsFull() bool {
 	return q.max > 0 && len(q.elts) >= q.max
 }
+
+// Set sets new value for the key under the cursor.
+// No timestamp change involved.
+func (c *Cursor) Set(v interface{}) {
+	e := c.elt
+	b := e.Value.(box)
+	b.v = v
+	e.Value = b
+}
