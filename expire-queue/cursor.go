@@ -98,6 +98,17 @@ func (q *ExpireQueue) Push(k, v interface{}, t time.Time, c *Cursor) {
 	}
 }
 
+// MoveToFront updates timestamp in cursor to specified value and
+// moves it up front.
+func (c *Cursor) MoveToFront(t time.Time) Cursor {
+	e := c.elt
+	b := e.Value.(box)
+	b.updated = t
+	e.Value = b
+	c.q.row.MoveToFront(e)
+	return *c
+}
+
 // IsFull tells if the queue if full, i.e. its length is at the max.
 func (q *ExpireQueue) IsFull() bool {
 	return q.max > 0 && len(q.elts) >= q.max
