@@ -80,3 +80,31 @@ func SplitWithQuotesFunc(isSpace, isQuote func(rune) bool) bufio.SplitFunc {
 		return 0, nil, nil
 	}
 }
+
+type Splitter struct {
+	// True if rune is a white space.
+	IsSpace func(rune) bool
+
+	// True if rune is quote. Any rune embraced by the one these pairs
+	// is considered a part of a token even if IsSpace returns true.
+	// A pairs must not contradict white space and another pair.
+	//
+	// If true, return closing quote rune.
+	IsQuote func(rune) (rune, bool)
+
+	// True if symbol is legitimate part of a token inside quotes.
+	// Must not contain quotes or space.
+	Quoted func(rune) bool
+
+	// True if symbol is legitimate part of a token outside quotes.
+	// Must not contain quotes or space.
+	Unquoted func(rune) bool
+}
+
+func (s *Splitter) SplitFunc() bufio.SplitFunc {
+	return func(data []byte, atEOF bool) (advance int, token []byte, err error) {
+		// skip whitespace
+		data, n := skipFunc(data, isSpace)
+		advance += n
+	}
+}
