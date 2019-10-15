@@ -102,7 +102,7 @@ type Splitter struct {
 }
 
 func (s *Splitter) SplitFunc() bufio.SplitFunc {
-	isSpaceOrQuote = func(r rune) bool {
+	isSpaceOrQuote := func(r rune) bool {
 		_, ok := s.IsQuote(r)
 		return ok || s.IsSpace(r)
 	}
@@ -119,11 +119,13 @@ func (s *Splitter) SplitFunc() bufio.SplitFunc {
 
 		// start of a token
 		n = 0 // length of token
+		quoted := false
 
 		for {
 			k := bytes.IndexFunc(data[n:], isSpaceOrQuote)
 			if k < 0 {
-				goto UNTERMINATED
+				// unterminated token, not enough data
+				break
 			}
 
 			// rune 'r' is either space or quote
@@ -131,24 +133,19 @@ func (s *Splitter) SplitFunc() bufio.SplitFunc {
 
 			// if quote, then look for closing quote
 			if q, ok := s.IsQuote(r); ok {
+				quoted = true
 				n += k + wid
-				k = bytes.IndexRune(data[n:], r)
-				if k < 0 {
-					goto UNTERMINATED
+				if k = bytes.IndexRune(data[n:], q); k < 0 {
+					break
 				}
-				n += k + wid
-			}
-
-			if s.IsSpace(r) {
-				if !quoted {
-					return advance + n + k + 1, data[:n+k], nil
-				}
+				quoted = false
 				n += k + wid
 				continue
 			}
+
+			return advance + n + k + wid, data[:n+k], nil
 		}
 
-	UNTERMINATED:
 		if !atEOF {
 			// unterminated token, need more data
 			return advance, nil, nil
@@ -159,6 +156,5 @@ func (s *Splitter) SplitFunc() bufio.SplitFunc {
 			// unterminated quote is not allowed
 			return advance + len(data), data, ErrOpenQuote
 		}
-
 	}
 }

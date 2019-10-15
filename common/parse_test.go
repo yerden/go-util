@@ -82,3 +82,85 @@ func TestScanWordsWithQuotes_QuotedSpaces1(t *testing.T) {
 	a.Equal(scanner.Text(), "\"another token\"")
 	a.NotTrue(scanner.Scan())
 }
+
+func testSplitter(t *testing.T, sample string, expToks []string) {
+	a := assert.New(t)
+
+	splitter := &Splitter{
+		IsSpace: unicode.IsSpace,
+		IsQuote: func(r rune) (rune, bool) {
+			if r == '<' {
+				return '>', true
+			}
+			if r == '"' {
+				return '"', true
+			}
+			return ' ', false
+		},
+		AllowOpenQuote: false}
+
+	b := bytes.NewBufferString(sample)
+	s := bufio.NewScanner(b)
+	s.Split(splitter.SplitFunc())
+
+	for _, tok := range expToks {
+		a.True(s.Scan())
+		a.Equal(s.Text(), tok)
+	}
+	a.NotTrue(s.Scan())
+	a.Nil(s.Err())
+}
+
+func TestSplitter(t *testing.T) {
+
+	testSplitter(t,
+		"   \"good bye\" hello <how hello> do <hell is real>   ",
+		[]string{
+			"\"good bye\"",
+			"hello",
+			"<how hello>",
+			"do",
+			"<hell is real>",
+		})
+
+	testSplitter(t,
+		"\"good bye\"",
+		[]string{
+			"\"good bye\"",
+		})
+}
+
+func TestSplitter1(t *testing.T) {
+	a := assert.New(t)
+
+	splitter := &Splitter{
+		IsSpace: unicode.IsSpace,
+		IsQuote: func(r rune) (rune, bool) {
+			if r == '<' {
+				return '>', true
+			}
+			if r == '"' {
+				return '"', true
+			}
+			return ' ', false
+		},
+		AllowOpenQuote: false}
+
+	sample := "   \"good bye\" hello <how hello> do <hell is real>   "
+
+	b := bytes.NewBufferString(sample)
+	s := bufio.NewScanner(b)
+	s.Split(splitter.SplitFunc())
+
+	a.True(s.Scan())
+	a.Equal(s.Text(), "\"good bye\"")
+	a.True(s.Scan())
+	a.Equal(s.Text(), "hello")
+	a.True(s.Scan())
+	a.Equal(s.Text(), "<how hello>")
+	a.True(s.Scan())
+	a.Equal(s.Text(), "do")
+	a.True(s.Scan())
+	a.Equal(s.Text(), "<hell is real>")
+	a.NotTrue(s.Scan())
+}
