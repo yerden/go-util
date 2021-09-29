@@ -65,6 +65,9 @@ func newHashDecByte(config *BCD) (res [0x100]word) {
 }
 
 func (dec *Decoder) unpack(w []byte, b byte) (n int, end bool, err error) {
+	if len(w) == 0 {
+		return 0, true, nil
+	}
 	if dw := dec.hashWord[b]; dw[2] == 0 {
 		return copy(w, dw[:2]), false, nil
 	}
