@@ -252,3 +252,21 @@ func BenchmarkDecodeOpt(b *testing.B) {
 		enc.Decode(out, []byte{0x21, 0x43, 0x65, 0x87})
 	}
 }
+
+func TestDecoder_SourceLongerThanDest(t *testing.T) {
+	assert := newAssert(t, false)
+
+	dec := NewDecoder(Standard)
+
+	src := []byte{0x21, 0x43, 0x55}
+	dst := make([]byte, DecodedLen(len(src)-1))
+	n, err := dec.Decode(dst, src)
+	assert(err == nil)
+	assert(string(dst[:n]) == "2143")
+
+	src = []byte{0x21, 0x43, 0xff}
+	dst = make([]byte, DecodedLen(len(src)-1))
+	n, err = dec.Decode(dst, src)
+	assert(err == nil)
+	assert(string(dst[:n]) == "2143")
+}
